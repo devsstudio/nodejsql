@@ -1,3 +1,5 @@
+//https://www.npmjs.com/package/mysql
+
 var NodeJSQList = require("./lib/NodeJSQList");
 
 exports.getList = function (connectionParams, baseParams) {
