@@ -1,6 +1,6 @@
 const mysql = require("mysql");
 
-module.exports = class {
+module.exports = class NodeJSQList {
   static FILTER_TYPE_SIMPLE = "SIMPLE";
   static FILTER_TYPE_COLUMN = "COLUMN";
   static FILTER_TYPE_SUB = "SUB";
@@ -617,11 +617,7 @@ module.exports = class {
     var column = this.getColumn(filter.attr);
     if (not) {
       return (
-        " " +
-        this._getConn(filter.conn, condition) +
-        " (" +
-        column +
-        " IS NULL)"
+        " " + this._getConn(filter.conn, condition) + " (" + column + " IS NULL)"
       );
     } else {
       return (
@@ -647,17 +643,11 @@ module.exports = class {
       }
 
       var column = this.getColumn(filter.attr[j]);
-      ors.push(
-        column + " LIKE " + this._setPlaceholder(placeholders, filter.val)
-      );
+      ors.push(column + " LIKE " + this._setPlaceholder(placeholders, filter.val));
     }
 
     return (
-      " " +
-      this._getConn(filter.conn, condition) +
-      " (" +
-      ors.join(" OR ") +
-      ")"
+      " " + this._getConn(filter.conn, condition) + " (" + ors.join(" OR ") + ")"
     );
   };
 

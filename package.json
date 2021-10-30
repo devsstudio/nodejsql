@@ -1,18 +1,31 @@
 {
-  "name": "devsstudio-nodejsql",
+  "name": "@devs-studio/nodejsql",
   "version": "1.0.0",
-  "description": "",
+  "description": "This README would normally document whatever steps are necessary to get your application up and running.",
   "main": "index.js",
   "scripts": {
     "lint": "eslint",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "author": "Devs Studio",
+  "author": "devs-studio",
   "license": "ISC",
   "dependencies": {
-    "mysql": "^2.18.1"
+    "mariadb": "^2.5.4",
+    "sequelize": "^6.6.5"
   },
   "devDependencies": {
     "eslint": "^6.7.2"
-  }
+  },
+  "directories": {
+    "lib": "lib"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git@JeanPaper:JeanPaper/devsstudio-nodejsql.git"
+  },
+  "keywords": [
+    "nodejs",
+    "mysql",
+    "api"
+  ]
 }

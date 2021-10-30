@@ -1,6 +1,8 @@
 //https://www.npmjs.com/package/mysql
 
-var NodeJSQList = require("./lib/NodeJSQList");
+const NodeJSQList = require("./classes/NodeJSQList");
+const { Sequelize } = require("sequelize");
+
 
 exports.getList = function (connectionParams, baseParams) {
   return new NodeJSQList(connectionParams, baseParams);
