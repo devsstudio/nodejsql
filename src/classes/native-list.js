@@ -1,6 +1,6 @@
-const mysql = require("mysql");
+const { DevsStudioNodejsqlError } = require("./error");
 
-module.exports = class NodeJSQList {
+class NativeList {
   static FILTER_TYPE_SIMPLE = "SIMPLE";
   static FILTER_TYPE_COLUMN = "COLUMN";
   static FILTER_TYPE_SUB = "SUB";
@@ -11,10 +11,10 @@ module.exports = class NodeJSQList {
   static FILTER_TYPE_NULL = "NULL";
   static FILTER_TYPE_NOT_NULL = "NOT_NULL";
   static FILTER_TYPE_DATE = "DATE";
-  static FILTER_TYPE_YEAR = "YEAR";
-  static FILTER_TYPE_MONTH = "MONTH";
-  static FILTER_TYPE_DAY = "DAY";
-  static FILTER_TYPE_TIME = "TIME";
+  // static FILTER_TYPE_YEAR = "YEAR";
+  // static FILTER_TYPE_MONTH = "MONTH";
+  // static FILTER_TYPE_DAY = "DAY";
+  // static FILTER_TYPE_TIME = "TIME";
   static FILTER_TYPE_DATE_BETWEEN = "DATE_BETWEEN";
   static FILTER_TYPE_TERM = "TERM";
   //
@@ -37,11 +37,11 @@ module.exports = class NodeJSQList {
   where;
   group;
   order;
-  pagination;
+  offsetLimit;
   placeholders;
 
-  constructor(connectionParams, baseParams) {
-    this.con = mysql.createConnection(connectionParams);
+  constructor(con, baseParams) {
+    this.con = con;
 
     this.columns = baseParams.columns;
     this.table = "FROM " + baseParams.table;
@@ -60,25 +60,49 @@ module.exports = class NodeJSQList {
       this.group = "";
     }
     //Setting order
-    this._setOrder(baseParams.order);
+    var orderSql = [];
+    for (const [key, value] of Object.entries(baseParams.order)) {
+      orderSql.push(this.columns[key] + " " + value);
+    }
+    this.order = "ORDER BY " + orderSql.join(", ");
   }
 
   async findAll(filters, pagination) {
     var placeholders = [];
     this.where = this._setFilters(filters, this.original_where, placeholders);
-    this.pagination = this._setPagination(pagination, placeholders);
-    return new Promise((resolve, reject) => {
-      var sql = this.getSql();
-      this.con.query(sql, placeholders, (err, results, fields) => {
-        if (err) {
-          // con.destroy();
-          reject("Ha ocurrido un error interno");
+    this.offsetLimit = await this._setPagination(pagination);
+    var sql = this.getSql();
+    //Obtenemos ítems
+    var items = await this.con.query(sql, placeholders);
+
+    //COUNT
+    if (pagination.count == 1) {
+      var total_items = await this._count(placeholders);
+      //Total de páginas
+      var total_pages = 1;
+      if (pagination.limit > 0) {
+        if (total_items > 0) {
+          total_pages = Math.ceil(total_items / pagination.limit);
         } else {
-          // con.end();
-          resolve(results);
+          total_pages = 0;
         }
-      });
-    });
+      }
+      return {
+        page: pagination.page * 1,
+        limit: pagination.limit * 1,
+        total_pages: total_pages,
+        total_items: total_items,
+        items: items,
+      };
+    } else {
+      return {
+        page: pagination.page * 1,
+        limit: pagination.limit * 1,
+        total_pages: 1,
+        total_items: items.length,
+        items: items,
+      };
+    }
   }
 
   async count(filters) {
@@ -112,7 +136,7 @@ module.exports = class NodeJSQList {
       " " +
       this.order +
       " " +
-      this.pagination;
+      this.offsetLimit;
     return sql;
   }
 
@@ -138,19 +162,10 @@ module.exports = class NodeJSQList {
     }
   };
 
-  _count = function (placeholders) {
-    return new Promise((resolve, reject) => {
-      var sql = this.getCountSql();
-      this.con.query(sql, placeholders, (err, results, fields) => {
-        if (err) {
-          // con.destroy();
-          reject("Ha ocurrido un error interno");
-        } else {
-          // con.end();
-          resolve(results[0].count);
-        }
-      });
-    });
+  _count = async function (placeholders) {
+    var sql = this.getCountSql();
+    var items = await this.con.query(sql, placeholders);
+    return items[0].count * 1;
   };
 
   _setPlaceholder = function (placeholders, value) {
@@ -170,66 +185,38 @@ module.exports = class NodeJSQList {
           //Procesamos filtro
           condition += this._processFilter(filters[i], condition, placeholders);
         } else {
-          throw "Filter should be an object, in index " + i;
+          throw new DevsStudioNodejsqlError(
+            `Filter should be an object, in index ${i}`
+          );
         }
       }
 
       return condition;
     } else {
-      throw "Filters should be an array";
+      throw new DevsStudioNodejsqlError("Filters should be an array");
     }
   };
 
-  _setOrder = function (order) {
-    var orderSql = [];
-    Object.entries(order).forEach((orderPair) => {
-      const [alias, direction] = orderPair;
-      orderSql.push(this.columns[alias] + " " + direction);
-    });
-    this.order = "ORDER BY " + orderSql.join(", ");
-  };
-
-  _setPagination = function (pagination, placeholders) {
+  _setPagination = async function (pagination) {
     if (typeof pagination.count === "undefined" || pagination.count === null) {
       pagination.count = 0;
     }
 
     if (typeof pagination.limit === "undefined" || pagination.limit === null) {
-      pagination.limit = 1;
+      pagination.limit = 10;
     }
 
     if (typeof pagination.page === "undefined" || pagination.page === null) {
-      pagination.page = false1;
+      pagination.page = 1;
     }
 
-    if (pagination.count == 1) {
-      if (pagination.limit !== false) {
-        var count = this._count(placeholders);
-        //Total de páginas
-        var total_pages = 1;
-        if (pagination.limit > 0) {
-          if (count > 0) {
-            total_pages = Math.ceil(count / pagination.limit);
-          } else {
-            total_pages = 0;
-          }
-        }
-        var offset = Math.floor(
-          pagination.limit * pagination.page - pagination.limit
-        );
-        return "LIMIT " + pagination.limit + " OFFSET " + offset;
-      } else {
-        return "";
-      }
+    if (pagination.limit !== false) {
+      var offset = Math.floor(
+        pagination.limit * pagination.page - pagination.limit
+      );
+      return "LIMIT " + pagination.limit + " OFFSET " + offset;
     } else {
-      if (pagination.limit !== false) {
-        var offset = Math.floor(
-          pagination.limit * pagination.page - pagination.limit
-        );
-        return "LIMIT " + pagination.limit + " OFFSET " + offset;
-      } else {
-        return "";
-      }
+      return "";
     }
   };
 
@@ -246,38 +233,39 @@ module.exports = class NodeJSQList {
     if (filter.type) {
       filter.type = filter.type.toUpperCase();
     } else {
-      filter.type = NodeJSQList.FILTER_TYPE_SIMPLE;
+      filter.type = NativeList.FILTER_TYPE_SIMPLE;
     }
 
     var valid_types = [
-      NodeJSQList.FILTER_TYPE_SIMPLE,
-      NodeJSQList.FILTER_TYPE_COLUMN,
-      NodeJSQList.FILTER_TYPE_SUB,
-      NodeJSQList.FILTER_TYPE_BETWEEN,
-      NodeJSQList.FILTER_TYPE_NOT_BETWEEN,
-      NodeJSQList.FILTER_TYPE_IN,
-      NodeJSQList.FILTER_TYPE_NOT_IN,
-      NodeJSQList.FILTER_TYPE_NULL,
-      NodeJSQList.FILTER_TYPE_NOT_NULL,
-      NodeJSQList.FILTER_TYPE_DATE,
-      NodeJSQList.FILTER_TYPE_YEAR,
-      NodeJSQList.FILTER_TYPE_MONTH,
-      NodeJSQList.FILTER_TYPE_DAY,
-      NodeJSQList.FILTER_TYPE_TIME,
-      NodeJSQList.FILTER_TYPE_DATE_BETWEEN,
-      NodeJSQList.FILTER_TYPE_TERM,
+      NativeList.FILTER_TYPE_SIMPLE,
+      NativeList.FILTER_TYPE_COLUMN,
+      NativeList.FILTER_TYPE_SUB,
+      NativeList.FILTER_TYPE_BETWEEN,
+      NativeList.FILTER_TYPE_NOT_BETWEEN,
+      NativeList.FILTER_TYPE_IN,
+      NativeList.FILTER_TYPE_NOT_IN,
+      NativeList.FILTER_TYPE_NULL,
+      NativeList.FILTER_TYPE_NOT_NULL,
+      NativeList.FILTER_TYPE_DATE,
+      // NativeList.FILTER_TYPE_YEAR,
+      // NativeList.FILTER_TYPE_MONTH,
+      // NativeList.FILTER_TYPE_DAY,
+      // NativeList.FILTER_TYPE_TIME,
+      NativeList.FILTER_TYPE_DATE_BETWEEN,
+      NativeList.FILTER_TYPE_TERM,
     ];
 
     //Verificamos que no sea un array
     if (!Array.isArray(filter.type)) {
       //Chequeamos si está en el array
       if (!valid_types.includes(filter.type)) {
-        throw "Invalid filter type: " + filter.type;
+        throw new DevsStudioNodejsqlError(
+          `Invalid filter type: ${filter.type}`
+        );
       }
     } else {
-      throw (
-        "Filter type shouldn't be an array neither object when filter type is " +
-        filter.type
+      throw new DevsStudioNodejsqlError(
+        `Filter type shouldn't be an array neither object when filter type is ${filter.type}`
       );
     }
   };
@@ -287,32 +275,35 @@ module.exports = class NodeJSQList {
     if (filter.conn) {
       filter.conn = filter.conn.toUpperCase();
     } else {
-      filter.conn = NodeJSQList.FILTER_CONNECTOR_AND;
+      filter.conn = NativeList.FILTER_CONNECTOR_AND;
     }
 
     //Verificamos que no sea un array
     if (!Array.isArray(filter.conn)) {
       var valid_conn = [
-        NodeJSQList.FILTER_CONNECTOR_AND,
-        NodeJSQList.FILTER_CONNECTOR_OR,
+        NativeList.FILTER_CONNECTOR_AND,
+        NativeList.FILTER_CONNECTOR_OR,
       ];
       //Chequeamos si está en el array
       if (!valid_conn.includes(filter.conn)) {
-        throw "Invalid filter connector: " + filter.conn;
+        throw new DevsStudioNodejsqlError(
+          `Invalid filter connector: ${filter.conn}`
+        );
       }
     } else {
-      throw (
-        "Filter connector shouldn't be an array neither object when filter type is " +
-        filter.conn
+      throw new DevsStudioNodejsqlError(
+        `Filter connector shouldn't be an array neither object when filter type is ${filter.conn}`
       );
     }
   };
 
   verifyFilterAttribute = function (filter) {
-    var white = filter.type !== NodeJSQList.FILTER_TYPE_SUB;
+    var white = filter.type !== NativeList.FILTER_TYPE_SUB;
     //Attr no está permitido cuando el tipo de filtro es sub
     if (filter.attr && !white) {
-      throw "Attribute filter not allowed when filter type is " + filter.type;
+      throw new DevsStudioNodejsqlError(
+        `Attribute filter not allowed when filter type is ${filter.type}`
+      );
     }
     //Si debería estar
     if (white) {
@@ -320,11 +311,13 @@ module.exports = class NodeJSQList {
       if (filter.attr) {
         //Nothing
       } else {
-        throw "Attribute filter is required when filter type is " + filter.type;
+        throw new DevsStudioNodejsqlError(
+          `Attribute filter is required when filter type is ${filter.type}`
+        );
       }
 
       //Verificamos tipo
-      if (filter.type === NodeJSQList.FILTER_TYPE_TERM) {
+      if (filter.type === NativeList.FILTER_TYPE_TERM) {
         //Verificamos que sea un array
         if (Array.isArray(filter.attr)) {
           //Verificamos si es un valor válido
@@ -332,13 +325,14 @@ module.exports = class NodeJSQList {
             _verifyFilterType(filter[i]);
             var column = this.getColumn(filter.attr[i]);
             if (typeof column === "undefined") {
-              throw "Attribute filter '" + column + "' is not allowed";
+              throw new DevsStudioNodejsqlError(
+                `Attribute filter '${column}' is not allowed`
+              );
             }
           }
         } else {
-          throw (
-            "Attribute filter should be array when filter type is " +
-            filter.type
+          throw new DevsStudioNodejsqlError(
+            `Attribute filter should be array when filter type is ${filter.type}`
           );
         }
       } else {
@@ -347,12 +341,13 @@ module.exports = class NodeJSQList {
           //Verificamos si es un valor válido
           var column = this.getColumn(filter.attr);
           if (typeof column === "undefined") {
-            throw "Attribute filter '" + filter.attr + "' is not allowed";
+            throw new DevsStudioNodejsqlError(
+              `Attribute filter '${filter.attr}' is not allowed`
+            );
           }
         } else {
-          throw (
-            "Attribute filter shouldn't be array neither object when filter type is " +
-            filter.type
+          throw new DevsStudioNodejsqlError(
+            `Attribute filter shouldn't be array neither object when filter type is ${filter.type}`
           );
         }
       }
@@ -361,107 +356,117 @@ module.exports = class NodeJSQList {
 
   verifyFilterOperator = function (filter) {
     var valid_types = [
-      NodeJSQList.FILTER_TYPE_SIMPLE,
-      NodeJSQList.FILTER_TYPE_COLUMN,
+      NativeList.FILTER_TYPE_SIMPLE,
+      NativeList.FILTER_TYPE_COLUMN,
     ];
 
     var valid = !valid_types.includes(filter.type);
 
     //Attr no está permitido cuando el tipo de filtro es diferente a simple y column
     if (filter.opr && valid) {
-      throw "Operator filter not allowed where filter type is " + filter.type;
+      throw new DevsStudioNodejsqlError(
+        `Operator filter not allowed where filter type is ${filter.type}`
+      );
     }
 
     //Si no está seteado asuminos equal
     if (filter.opr) {
       filter.opr = filter.opr.toUpperCase();
     } else {
-      filter.opr = NodeJSQList.FILTER_OPERATOR_EQUAL;
+      filter.opr = NativeList.FILTER_OPERATOR_EQUAL;
     }
 
     //Chequeamos si está en el array
     if (!Array.isArray(filter.opr)) {
       var valid_operators = [
-        NodeJSQList.FILTER_OPERATOR_EQUAL,
-        NodeJSQList.FILTER_OPERATOR_NOT_EQUAL,
-        NodeJSQList.FILTER_OPERATOR_MAJOR,
-        NodeJSQList.FILTER_OPERATOR_MAJOR_EQUAL,
-        NodeJSQList.FILTER_OPERATOR_MINOR,
-        NodeJSQList.FILTER_OPERATOR_MINOR_EQUAL,
-        NodeJSQList.FILTER_OPERATOR_LIKE,
+        NativeList.FILTER_OPERATOR_EQUAL,
+        NativeList.FILTER_OPERATOR_NOT_EQUAL,
+        NativeList.FILTER_OPERATOR_MAJOR,
+        NativeList.FILTER_OPERATOR_MAJOR_EQUAL,
+        NativeList.FILTER_OPERATOR_MINOR,
+        NativeList.FILTER_OPERATOR_MINOR_EQUAL,
+        NativeList.FILTER_OPERATOR_LIKE,
       ];
       //Verificamos si es un valor válido
       if (!valid_operators.includes(filter.opr)) {
-        throw "Operator filter '" + filter.opr + "' not allowed";
+        throw new DevsStudioNodejsqlError(
+          `Operator filter '${filter.opr}' not allowed`
+        );
       }
     } else {
-      throw (
-        "Operator filter shouldn't be array neither object when filter type is " +
-        filter.type
+      throw new DevsStudioNodejsqlError(
+        `Operator filter shouldn't be array neither object when filter type is ${filter.type}`
       );
     }
   };
 
   verifyFilterValue = function (filter) {
     var valid_types = [
-      NodeJSQList.FILTER_TYPE_NULL,
-      NodeJSQList.FILTER_TYPE_NOT_NULL,
+      NativeList.FILTER_TYPE_NULL,
+      NativeList.FILTER_TYPE_NOT_NULL,
     ];
 
     var white = !valid_types.includes(filter.type);
 
     //Val no está permitido cuando el tipo de filtro es null o not_null
     if (filter.val && !white) {
-      throw "Value is not allowed when filter type is " + filter.type;
+      throw new DevsStudioNodejsqlError(
+        `Value is not allowed when filter type is ${filter.type}"`
+      );
     }
 
     //Verificamos que exista (salvo que sea NULL o NOT_NULL)
     if (typeof filter.val === "undefined" && white) {
-      throw "Value is required when filter type is " + filter.type;
+      throw new DevsStudioNodejsqlError(
+        `Value is required when filter type is ${filter.type}`
+      );
     }
   };
 
   _processFilter = function (filter, condition, placeholders) {
     switch (filter.type) {
-      case NodeJSQList.FILTER_TYPE_SIMPLE:
+      case NativeList.FILTER_TYPE_SIMPLE:
         return this._processSimpleFilter(filter, condition, placeholders);
-      case NodeJSQList.FILTER_TYPE_COLUMN:
+      case NativeList.FILTER_TYPE_COLUMN:
         return this._processColumnFilter(filter, condition, placeholders);
-      case NodeJSQList.FILTER_TYPE_BETWEEN:
+      case NativeList.FILTER_TYPE_BETWEEN:
         return this._processBetweenFilter(
           filter,
           false,
           condition,
           placeholders
         );
-      case NodeJSQList.FILTER_TYPE_NOT_BETWEEN:
+      case NativeList.FILTER_TYPE_NOT_BETWEEN:
         return this._processBetweenFilter(
           filter,
           true,
           condition,
           placeholders
         );
-      case NodeJSQList.FILTER_TYPE_IN:
+      case NativeList.FILTER_TYPE_IN:
         return this._processInFilter(filter, false, condition, placeholders);
-      case NodeJSQList.FILTER_TYPE_NOT_IN:
+      case NativeList.FILTER_TYPE_NOT_IN:
         return this._processInFilter(filter, true, condition, placeholders);
-      case NodeJSQList.FILTER_TYPE_NULL:
+      case NativeList.FILTER_TYPE_NULL:
         return this._processNullFilter(filter, false, condition, placeholders);
-      case NodeJSQList.FILTER_TYPE_NOT_NULL:
+      case NativeList.FILTER_TYPE_NOT_NULL:
         return this._processNullFilter(filter, true, condition, placeholders);
-      case NodeJSQList.FILTER_TYPE_TERM:
+      case NativeList.FILTER_TYPE_TERM:
         return this._processTermFilter(filter, condition, placeholders);
-      case NodeJSQList.FILTER_TYPE_SUB:
+      case NativeList.FILTER_TYPE_SUB:
         return this._processSubFilter(filter, condition, placeholders);
+      case NativeList.FILTER_TYPE_DATE:
+        return this._processDateFilter(filter, condition, placeholders);
+      case NativeList.FILTER_TYPE_DATE_BETWEEN:
+        return this._processDateBetweenFilter(filter, condition, placeholders);
     }
   };
 
   _processSimpleFilter = function (filter, condition, placeholders) {
     //Validamos que no sea un array
     if (Array.isArray(filter.val)) {
-      throw (
-        "Filter value shouldn't be an array neither object when filter type is " +
-        filter.type
+      throw new DevsStudioNodejsqlError(
+        `Filter value shouldn't be an array neither object when filter type is ${filter.type}`
       );
     }
 
@@ -484,16 +489,17 @@ module.exports = class NodeJSQList {
   _processColumnFilter = function (filter, condition, placeholders) {
     //Validamos que no sea un array
     if (Array.isArray(filter.val)) {
-      throw (
-        "Filter value shouldn't be an array neither object when filter type is " +
-        filter.type
+      throw new DevsStudioNodejsqlError(
+        `Filter value shouldn't be an array neither object when filter type is ${filter.type}`
       );
     }
     //Verificamos que sea una columna válida
     var column = this.getColumn(filter.attr);
     var column2 = this.getColumn(filter.val);
-    if (typeof column2 === undefined || column2 === null) {
-      throw "Column filter '" + column2 + "' is not allowed";
+    if (typeof column2 === "undefined" || column2 === null) {
+      throw new DevsStudioNodejsqlError(
+        `Column filter '${filter.val}' is not allowed`
+      );
     }
 
     return (
@@ -512,25 +518,23 @@ module.exports = class NodeJSQList {
   _processBetweenFilter = function (filter, not, condition, placeholders) {
     //Validamos que sea un array
     if (!Array.isArray(filter.val)) {
-      throw (
-        "Filter value should be an array when filter type is " + filter.type
+      throw new DevsStudioNodejsqlError(
+        `Filter value should be an array when filter type is ${filter.type}`
       );
     }
 
     //Debe tener dos valores siempre
     if (filter.val.length !== 2) {
-      throw (
-        "Filter value should be an array with two elements, when filter type is " +
-        filter.type
+      throw new DevsStudioNodejsqlError(
+        `Filter value should be an array with two elements, when filter type is ${filter.type}`
       );
     }
 
     //Cada elemento no debe ser array
     for (var j = 0; j < filter.val.length; j++) {
       if (Array.isArray(filter.val[j])) {
-        throw (
-          "Filter value shouldn't be an array neither object when filter type is " +
-          filter.type
+        throw new DevsStudioNodejsqlError(
+          `Filter value shouldn't be an array neither object when filter type is ${filter.type}`
         );
       }
     }
@@ -543,7 +547,7 @@ module.exports = class NodeJSQList {
         this._getConn(filter.conn, condition) +
         " (" +
         column +
-        " BETWEEN " +
+        " NOT BETWEEN " +
         this._setPlaceholder(placeholders, filter.val[0]) +
         " AND " +
         this._setPlaceholder(placeholders, filter.val[1]) +
@@ -555,7 +559,7 @@ module.exports = class NodeJSQList {
         this._getConn(filter.conn, condition) +
         " (" +
         column +
-        " NOT BETWEEN " +
+        " BETWEEN " +
         this._setPlaceholder(placeholders, filter.val[0]) +
         " AND " +
         this._setPlaceholder(placeholders, filter.val[1]) +
@@ -567,8 +571,8 @@ module.exports = class NodeJSQList {
   _processInFilter = function (filter, not, condition, placeholders) {
     //Validamos que sea un array
     if (!Array.isArray(filter.val)) {
-      throw (
-        "Filter value should be an array when filter type is " + filter.type
+      throw new DevsStudioNodejsqlError(
+        `Filter value should be an array when filter type is ${filter.type}`
       );
     }
 
@@ -576,9 +580,8 @@ module.exports = class NodeJSQList {
     //Cada elemento no debe ser array
     for (var j = 0; j < filter.val.length; j++) {
       if (Array.isArray(filter.val[j])) {
-        throw (
-          "Filter value shouldn't be an array neither object when filter type is " +
-          filter.type
+        throw new DevsStudioNodejsqlError(
+          `Filter value shouldn't be an array neither object when filter type is ${filter.type}`
         );
       } else {
         current_placeholders.push(
@@ -595,7 +598,7 @@ module.exports = class NodeJSQList {
         this._getConn(filter.conn, condition) +
         " (" +
         column +
-        " IN (" +
+        " NOT IN (" +
         current_placeholders.join(", ") +
         "))"
       );
@@ -617,7 +620,11 @@ module.exports = class NodeJSQList {
     var column = this.getColumn(filter.attr);
     if (not) {
       return (
-        " " + this._getConn(filter.conn, condition) + " (" + column + " IS NULL)"
+        " " +
+        this._getConn(filter.conn, condition) +
+        " (" +
+        column +
+        " IS NOT NULL)"
       );
     } else {
       return (
@@ -625,7 +632,7 @@ module.exports = class NodeJSQList {
         this._getConn(filter.conn, condition) +
         " (" +
         column +
-        " IS NOT NULL)"
+        " IS NULL)"
       );
     }
   };
@@ -636,26 +643,31 @@ module.exports = class NodeJSQList {
     var ors = [];
     for (var j = 0; j < filter.attr.length; j++) {
       if (Array.isArray(filter.val)) {
-        throw (
-          "Filter value shouldn't be an array neither object when filter type is " +
-          filter.type
+        throw new DevsStudioNodejsqlError(
+          `Filter value shouldn't be an array neither object when filter type is ${filter.type}`
         );
       }
 
       var column = this.getColumn(filter.attr[j]);
-      ors.push(column + " LIKE " + this._setPlaceholder(placeholders, filter.val));
+      ors.push(
+        column + " LIKE " + this._setPlaceholder(placeholders, filter.val)
+      );
     }
 
     return (
-      " " + this._getConn(filter.conn, condition) + " (" + ors.join(" OR ") + ")"
+      " " +
+      this._getConn(filter.conn, condition) +
+      " (" +
+      ors.join(" OR ") +
+      ")"
     );
   };
 
   _processSubFilter = function (filter, condition, placeholders) {
     //Validamos que sea un array
     if (!Array.isArray(filter.val)) {
-      throw (
-        "Filter value should be an array when filter type is " + filter.type
+      throw new DevsStudioNodejsqlError(
+        `Filter value should be an array when filter type is ${filter.type}`
       );
     }
 
@@ -667,4 +679,60 @@ module.exports = class NodeJSQList {
       ")"
     );
   };
-};
+
+  _processDateFilter = function (filter, condition, placeholders) {
+    //Validamos que no sea un array
+    if (Array.isArray(filter.val)) {
+      throw new DevsStudioNodejsqlError(
+        `Filter value shouldn't be an array neither object when filter type is ${filter.type}`
+      );
+    }
+
+    //Creamos
+    var column = this.getColumn(filter.attr);
+
+    return (
+      " " +
+      this._getConn(filter.conn, condition) +
+      " (" +
+      column +
+      " BETWEEN DATE(" +
+      this._setPlaceholder(placeholders, filter.val) +
+      ") AND DATE_ADD(DATE(" +
+      this._setPlaceholder(placeholders, filter.val) +
+      "), INTERVAL 1 DAY))"
+    );
+  };
+
+  _processDateBetweenFilter = function (filter, condition, placeholders) {
+    //Validamos que sea un array
+    if (!Array.isArray(filter.val)) {
+      throw new DevsStudioNodejsqlError(
+        `Filter value should be an array when filter type is ${filter.type}`
+      );
+    }
+
+    if (!filter.val.length !== 2) {
+      throw new DevsStudioNodejsqlError(
+        `Filter value should be an array with two elements, when filter type is ${filter.type}`
+      );
+    }
+
+    //Creamos
+    var column = this.getColumn(filter.attr);
+
+    return (
+      " " +
+      this._getConn(filter.conn, condition) +
+      " (" +
+      column +
+      " BETWEEN DATE(" +
+      this._setPlaceholder(placeholders, filter.val[0]) +
+      ") AND DATE_ADD(DATE(" +
+      this._setPlaceholder(placeholders, filter.val[1]) +
+      "), INTERVAL 1 DAY))"
+    );
+  };
+}
+
+exports.NativeList = NativeList;

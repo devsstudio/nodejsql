@@ -1,23 +1,18 @@
 {
   "name": "@devs-studio/nodejsql",
-  "version": "1.0.0",
+  "version": "1.0.18",
   "description": "This README would normally document whatever steps are necessary to get your application up and running.",
-  "main": "index.js",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "scripts": {
-    "lint": "eslint",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "prepublish": "npx tsc",
+    "build": "npx tsc"
   },
   "author": "devs-studio",
   "license": "ISC",
-  "dependencies": {
-    "mariadb": "^2.5.4",
-    "sequelize": "^6.6.5"
-  },
+  "dependencies": {},
   "devDependencies": {
-    "eslint": "^6.7.2"
-  },
-  "directories": {
-    "lib": "lib"
+    "typescript": "^4.7.4"
   },
   "repository": {
     "type": "git",
