@@ -1,6 +1,6 @@
 {
   "name": "@devs-studio/nodejsql",
-  "version": "1.0.19",
+  "version": "1.0.21",
   "description": "This README would normally document whatever steps are necessary to get your application up and running.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -10,9 +10,8 @@
   },
   "author": "devs-studio",
   "license": "ISC",
-  "dependencies": {},
   "devDependencies": {
-    "typescript": "^4.7.4"
+    "typescript": "^4.8.4"
   },
   "repository": {
     "type": "git",

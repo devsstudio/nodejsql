@@ -46,12 +46,12 @@ class NativeList {
     this.columns = baseParams.columns;
     this.table = "FROM " + baseParams.table;
     //Adding WHERE
-    if (baseParams.where) {
+    if (baseParams.where && baseParams.length > 0) {
       this.original_where = baseParams.where;
       this.where = baseParams.where;
     } else {
-      this.original_where = "";
-      this.where = "";
+      this.original_where = "1 = 1";
+      this.where = "1 = 1";
     }
     //Adding GROUP
     if (baseParams.group) {
