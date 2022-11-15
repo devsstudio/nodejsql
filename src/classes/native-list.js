@@ -59,18 +59,13 @@ class NativeList {
     } else {
       this.group = "";
     }
-    //Setting order
-    var orderSql = [];
-    for (const [key, value] of Object.entries(baseParams.order)) {
-      orderSql.push(this.columns[key] + " " + value);
-    }
-    this.order = "ORDER BY " + orderSql.join(", ");
   }
 
   async findAll(filters, pagination) {
     var placeholders = [];
     this.where = this._setFilters(filters, this.original_where, placeholders);
     this.offsetLimit = await this._setPagination(pagination);
+    this.order = this._setOrder(pagination);
     var sql = this.getSql();
     //Obtenemos ítems
     var items = await this.con.query(sql, placeholders);
@@ -219,6 +214,15 @@ class NativeList {
       return "";
     }
   };
+
+  _setOrder = function (pagination) {
+    //Setting order
+    var orderSql = [];
+    for (const [key, value] of Object.entries(pagination.order)) {
+      orderSql.push(this.columns[key] + " " + value);
+    }
+    return "ORDER BY " + orderSql.join(", ");
+  }
 
   getColumn = function (alias) {
     return this.columns[alias];
