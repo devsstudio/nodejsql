@@ -1,9 +1,11 @@
-const { DevsStudioNodejsqlError } = require("./error");
+import { Columns, ListParams } from "../dto/params/list.params";
+import { FilterRequest } from "../dto/request/filter.request";
+import { PaginationRequest } from "../dto/request/pagination.request";
+import { DevsStudioNodejsqlError } from "./error";
 
-class NativeList {
+export class NativeList {
   static FILTER_TYPE_SIMPLE = "SIMPLE";
   static FILTER_TYPE_COLUMN = "COLUMN";
-  static FILTER_TYPE_SUB = "SUB";
   static FILTER_TYPE_BETWEEN = "BETWEEN";
   static FILTER_TYPE_NOT_BETWEEN = "NOT_BETWEEN";
   static FILTER_TYPE_IN = "IN";
@@ -31,22 +33,23 @@ class NativeList {
   //
   static SORT_RAND = "RAND";
 
-  columns;
-  table;
-  original_where;
-  where;
-  group;
-  order;
-  offsetLimit;
-  placeholders;
+  columns: Columns;
+  table: string;
+  original_where: string;
+  where: string;
+  group: string;
+  order: string;
+  offsetLimit: string;
+  placeholders: string;
+  con: any;
 
-  constructor(con, baseParams) {
+  constructor(con: any, baseParams: ListParams) {
     this.con = con;
 
     this.columns = baseParams.columns;
     this.table = "FROM " + baseParams.table;
     //Adding WHERE
-    if (baseParams.where && baseParams.length > 0) {
+    if (baseParams.where && Object.values(baseParams).length > 0) {
       this.original_where = baseParams.where;
       this.where = baseParams.where;
     } else {
@@ -55,14 +58,14 @@ class NativeList {
     }
     //Adding GROUP
     if (baseParams.group) {
-      this.group = "GROUP BY " + baseParams.group.join(", ");
+      this.group = "GROUP BY " + baseParams.group;
     } else {
       this.group = "";
     }
   }
 
-  async findAll(filters, pagination) {
-    var placeholders = [];
+  async findAll(filters: FilterRequest[], pagination: PaginationRequest) {
+    var placeholders: string[] = [];
     this.where = this._setFilters(filters, this.original_where, placeholders);
     this.offsetLimit = await this._setPagination(pagination);
     this.order = this._setOrder(pagination);
@@ -71,7 +74,7 @@ class NativeList {
     var items = await this.con.query(sql, placeholders);
 
     //COUNT
-    if (pagination.count == 1) {
+    if (pagination.count) {
       var total_items = await this._count(placeholders);
       //Total de páginas
       var total_pages = 1;
@@ -100,8 +103,8 @@ class NativeList {
     }
   }
 
-  async count(filters) {
-    var placeholders = [];
+  async count(filters: FilterRequest[]) {
+    var placeholders: string[] = [];
     this.where = this._setFilters(filters, this.original_where, placeholders);
 
     return await this._count(placeholders);
@@ -135,7 +138,7 @@ class NativeList {
     return sql;
   }
 
-  _getColumnCount = function () {
+  private _getColumnCount() {
     if (this.group.trim().length > 0) {
       var distinct = [];
       var parts = this.group.trim().replace("GROUP BY", "").split(",");
@@ -143,10 +146,10 @@ class NativeList {
       for (var i = 0; i < parts.length; i++) {
         distinct.push(
           parts[i]
-            .replace(" ASC")
-            .replace(" DESC")
-            .replace(" asc")
-            .replace(" desc")
+            .replace(" ASC", "")
+            .replace(" DESC", "")
+            .replace(" asc", "")
+            .replace(" desc", "")
             .trim()
         );
       }
@@ -157,18 +160,18 @@ class NativeList {
     }
   };
 
-  _count = async function (placeholders) {
+  private async _count(placeholders: any[]) {
     var sql = this.getCountSql();
     var items = await this.con.query(sql, placeholders);
     return items[0].count * 1;
   };
 
-  _setPlaceholder = function (placeholders, value) {
+  private _setPlaceholder(placeholders: string[], value: string) {
     placeholders.push(value);
     return "?";
   };
 
-  _setFilters = function (filters, condition, placeholders) {
+  private _setFilters(filters: FilterRequest[], condition: string, placeholders: string[]) {
     if (Array.isArray(filters)) {
       for (var i = 0; i < filters.length; i++) {
         if (typeof filters[i] === "object" && filters[i] !== null) {
@@ -192,9 +195,9 @@ class NativeList {
     }
   };
 
-  _setPagination = async function (pagination) {
+  async _setPagination(pagination: PaginationRequest) {
     if (typeof pagination.count === "undefined" || pagination.count === null) {
-      pagination.count = 0;
+      pagination.count = false;
     }
 
     if (typeof pagination.limit === "undefined" || pagination.limit === null) {
@@ -205,7 +208,7 @@ class NativeList {
       pagination.page = 1;
     }
 
-    if (pagination.limit !== false) {
+    if (pagination.limit > 0) {
       var offset = Math.floor(
         pagination.limit * pagination.page - pagination.limit
       );
@@ -215,24 +218,28 @@ class NativeList {
     }
   };
 
-  _setOrder = function (pagination) {
+  private _setOrder(pagination: PaginationRequest) {
     //Setting order
     var orderSql = [];
     for (const [key, value] of Object.entries(pagination.order)) {
       orderSql.push(this.columns[key] + " " + value);
     }
-    return "ORDER BY " + orderSql.join(", ");
+    if (orderSql.length > 0) {
+      return "ORDER BY " + orderSql.join(", ");
+    } else {
+      return "";
+    }
   }
 
-  getColumn = function (alias) {
+  getColumn(alias: string) {
     return this.columns[alias];
   };
 
-  _getConn = function (conn, condition) {
+  private _getConn(conn: any, condition: string) {
     return condition.trim().length > 0 ? conn : "";
   };
 
-  _verifyFilterType = function (filter) {
+  private _verifyFilterType(filter: FilterRequest) {
     //Si no existe seteamos por defecto
     if (filter.type) {
       filter.type = filter.type.toUpperCase();
@@ -243,7 +250,6 @@ class NativeList {
     var valid_types = [
       NativeList.FILTER_TYPE_SIMPLE,
       NativeList.FILTER_TYPE_COLUMN,
-      NativeList.FILTER_TYPE_SUB,
       NativeList.FILTER_TYPE_BETWEEN,
       NativeList.FILTER_TYPE_NOT_BETWEEN,
       NativeList.FILTER_TYPE_IN,
@@ -259,22 +265,15 @@ class NativeList {
       NativeList.FILTER_TYPE_TERM,
     ];
 
-    //Verificamos que no sea un array
-    if (!Array.isArray(filter.type)) {
-      //Chequeamos si está en el array
-      if (!valid_types.includes(filter.type)) {
-        throw new DevsStudioNodejsqlError(
-          `Invalid filter type: ${filter.type}`
-        );
-      }
-    } else {
+    //Chequeamos si está en el array
+    if (!valid_types.includes(filter.type)) {
       throw new DevsStudioNodejsqlError(
-        `Filter type shouldn't be an array neither object when filter type is ${filter.type}`
+        `Invalid filter type: ${filter.type}`
       );
     }
   };
 
-  verifyFilterConnector = function (filter) {
+  verifyFilterConnector(filter: FilterRequest) {
     //Si no existe seteamos por defecto
     if (filter.conn) {
       filter.conn = filter.conn.toUpperCase();
@@ -282,83 +281,54 @@ class NativeList {
       filter.conn = NativeList.FILTER_CONNECTOR_AND;
     }
 
-    //Verificamos que no sea un array
-    if (!Array.isArray(filter.conn)) {
-      var valid_conn = [
-        NativeList.FILTER_CONNECTOR_AND,
-        NativeList.FILTER_CONNECTOR_OR,
-      ];
-      //Chequeamos si está en el array
-      if (!valid_conn.includes(filter.conn)) {
-        throw new DevsStudioNodejsqlError(
-          `Invalid filter connector: ${filter.conn}`
-        );
-      }
+    var valid_conn = [
+      NativeList.FILTER_CONNECTOR_AND,
+      NativeList.FILTER_CONNECTOR_OR,
+    ];
+    //Chequeamos si está en el array
+    if (!valid_conn.includes(filter.conn)) {
+      throw new DevsStudioNodejsqlError(
+        `Invalid filter connector: ${filter.conn}`
+      );
+    }
+  };
+
+  verifyFilterAttribute(filter: FilterRequest) {
+    //Verificamos que exista
+    if (filter.attr) {
+      //Nothing
     } else {
       throw new DevsStudioNodejsqlError(
-        `Filter connector shouldn't be an array neither object when filter type is ${filter.conn}`
+        `Attribute filter is required when filter type is ${filter.type}`
       );
     }
-  };
 
-  verifyFilterAttribute = function (filter) {
-    var white = filter.type !== NativeList.FILTER_TYPE_SUB;
-    //Attr no está permitido cuando el tipo de filtro es sub
-    if (filter.attr && !white) {
-      throw new DevsStudioNodejsqlError(
-        `Attribute filter not allowed when filter type is ${filter.type}`
-      );
-    }
-    //Si debería estar
-    if (white) {
-      //Verificamos que exista
-      if (filter.attr) {
-        //Nothing
-      } else {
+    //Verificamos tipo
+    if (filter.type === NativeList.FILTER_TYPE_TERM) {
+      //Verificamos que sea un array
+      this._verifyFilterType(filter);
+      //Verificamos si es un valor válido
+      for (let attr of filter.attr.split(",")) {
+        var column = this.getColumn(attr);
+        if (typeof column === "undefined") {
+          throw new DevsStudioNodejsqlError(
+            `Attribute filter '${column}' is not allowed`
+          );
+        }
+      }
+    } else {
+      //Verificamos si es un valor válido
+      var column = this.getColumn(filter.attr);
+      if (typeof column === "undefined") {
         throw new DevsStudioNodejsqlError(
-          `Attribute filter is required when filter type is ${filter.type}`
+          `Attribute filter '${filter.attr}' is not allowed`
         );
       }
-
-      //Verificamos tipo
-      if (filter.type === NativeList.FILTER_TYPE_TERM) {
-        //Verificamos que sea un array
-        if (Array.isArray(filter.attr)) {
-          //Verificamos si es un valor válido
-          for (var i = 0; i < filter.attr; i++) {
-            _verifyFilterType(filter[i]);
-            var column = this.getColumn(filter.attr[i]);
-            if (typeof column === "undefined") {
-              throw new DevsStudioNodejsqlError(
-                `Attribute filter '${column}' is not allowed`
-              );
-            }
-          }
-        } else {
-          throw new DevsStudioNodejsqlError(
-            `Attribute filter should be array when filter type is ${filter.type}`
-          );
-        }
-      } else {
-        //Verificamos que no sea un array
-        if (!Array.isArray(filter.attr)) {
-          //Verificamos si es un valor válido
-          var column = this.getColumn(filter.attr);
-          if (typeof column === "undefined") {
-            throw new DevsStudioNodejsqlError(
-              `Attribute filter '${filter.attr}' is not allowed`
-            );
-          }
-        } else {
-          throw new DevsStudioNodejsqlError(
-            `Attribute filter shouldn't be array neither object when filter type is ${filter.type}`
-          );
-        }
-      }
     }
+
   };
 
-  verifyFilterOperator = function (filter) {
+  verifyFilterOperator(filter: FilterRequest) {
     var valid_types = [
       NativeList.FILTER_TYPE_SIMPLE,
       NativeList.FILTER_TYPE_COLUMN,
@@ -380,31 +350,24 @@ class NativeList {
       filter.opr = NativeList.FILTER_OPERATOR_EQUAL;
     }
 
-    //Chequeamos si está en el array
-    if (!Array.isArray(filter.opr)) {
-      var valid_operators = [
-        NativeList.FILTER_OPERATOR_EQUAL,
-        NativeList.FILTER_OPERATOR_NOT_EQUAL,
-        NativeList.FILTER_OPERATOR_MAJOR,
-        NativeList.FILTER_OPERATOR_MAJOR_EQUAL,
-        NativeList.FILTER_OPERATOR_MINOR,
-        NativeList.FILTER_OPERATOR_MINOR_EQUAL,
-        NativeList.FILTER_OPERATOR_LIKE,
-      ];
-      //Verificamos si es un valor válido
-      if (!valid_operators.includes(filter.opr)) {
-        throw new DevsStudioNodejsqlError(
-          `Operator filter '${filter.opr}' not allowed`
-        );
-      }
-    } else {
+    var valid_operators = [
+      NativeList.FILTER_OPERATOR_EQUAL,
+      NativeList.FILTER_OPERATOR_NOT_EQUAL,
+      NativeList.FILTER_OPERATOR_MAJOR,
+      NativeList.FILTER_OPERATOR_MAJOR_EQUAL,
+      NativeList.FILTER_OPERATOR_MINOR,
+      NativeList.FILTER_OPERATOR_MINOR_EQUAL,
+      NativeList.FILTER_OPERATOR_LIKE,
+    ];
+    //Verificamos si es un valor válido
+    if (!valid_operators.includes(filter.opr)) {
       throw new DevsStudioNodejsqlError(
-        `Operator filter shouldn't be array neither object when filter type is ${filter.type}`
+        `Operator filter '${filter.opr}' not allowed`
       );
     }
   };
 
-  verifyFilterValue = function (filter) {
+  verifyFilterValue(filter: FilterRequest) {
     var valid_types = [
       NativeList.FILTER_TYPE_NULL,
       NativeList.FILTER_TYPE_NOT_NULL,
@@ -427,7 +390,7 @@ class NativeList {
     }
   };
 
-  _processFilter = function (filter, condition, placeholders) {
+  _processFilter(filter: FilterRequest, condition: string, placeholders: string[]) {
     switch (filter.type) {
       case NativeList.FILTER_TYPE_SIMPLE:
         return this._processSimpleFilter(filter, condition, placeholders);
@@ -457,8 +420,6 @@ class NativeList {
         return this._processNullFilter(filter, true, condition, placeholders);
       case NativeList.FILTER_TYPE_TERM:
         return this._processTermFilter(filter, condition, placeholders);
-      case NativeList.FILTER_TYPE_SUB:
-        return this._processSubFilter(filter, condition, placeholders);
       case NativeList.FILTER_TYPE_DATE:
         return this._processDateFilter(filter, condition, placeholders);
       case NativeList.FILTER_TYPE_DATE_BETWEEN:
@@ -466,13 +427,7 @@ class NativeList {
     }
   };
 
-  _processSimpleFilter = function (filter, condition, placeholders) {
-    //Validamos que no sea un array
-    if (Array.isArray(filter.val)) {
-      throw new DevsStudioNodejsqlError(
-        `Filter value shouldn't be an array neither object when filter type is ${filter.type}`
-      );
-    }
+  private _processSimpleFilter(filter: FilterRequest, condition: string, placeholders: string[]) {
 
     //Creamos
     var column = this.getColumn(filter.attr);
@@ -490,13 +445,8 @@ class NativeList {
     );
   };
 
-  _processColumnFilter = function (filter, condition, placeholders) {
-    //Validamos que no sea un array
-    if (Array.isArray(filter.val)) {
-      throw new DevsStudioNodejsqlError(
-        `Filter value shouldn't be an array neither object when filter type is ${filter.type}`
-      );
-    }
+  private _processColumnFilter(filter: FilterRequest, condition: string, placeholders: string[]) {
+
     //Verificamos que sea una columna válida
     var column = this.getColumn(filter.attr);
     var column2 = this.getColumn(filter.val);
@@ -519,28 +469,16 @@ class NativeList {
     );
   };
 
-  _processBetweenFilter = function (filter, not, condition, placeholders) {
-    //Validamos que sea un array
-    if (!Array.isArray(filter.val)) {
-      throw new DevsStudioNodejsqlError(
-        `Filter value should be an array when filter type is ${filter.type}`
-      );
-    }
+  private _processBetweenFilter(filter: FilterRequest, not: boolean, condition: string, placeholders: string[]) {
+
+    //Hacemos split de los campos
+    var vals = filter.val.split(",");
 
     //Debe tener dos valores siempre
-    if (filter.val.length !== 2) {
+    if (vals.length !== 2) {
       throw new DevsStudioNodejsqlError(
-        `Filter value should be an array with two elements, when filter type is ${filter.type}`
+        `Filter value should be an string with two elements separated by comma, when filter type is ${filter.type}`
       );
-    }
-
-    //Cada elemento no debe ser array
-    for (var j = 0; j < filter.val.length; j++) {
-      if (Array.isArray(filter.val[j])) {
-        throw new DevsStudioNodejsqlError(
-          `Filter value shouldn't be an array neither object when filter type is ${filter.type}`
-        );
-      }
     }
 
     //Creamos
@@ -552,9 +490,9 @@ class NativeList {
         " (" +
         column +
         " NOT BETWEEN " +
-        this._setPlaceholder(placeholders, filter.val[0]) +
+        this._setPlaceholder(placeholders, vals[0]) +
         " AND " +
-        this._setPlaceholder(placeholders, filter.val[1]) +
+        this._setPlaceholder(placeholders, vals[1]) +
         ")"
       );
     } else {
@@ -564,34 +502,24 @@ class NativeList {
         " (" +
         column +
         " BETWEEN " +
-        this._setPlaceholder(placeholders, filter.val[0]) +
+        this._setPlaceholder(placeholders, vals[0]) +
         " AND " +
-        this._setPlaceholder(placeholders, filter.val[1]) +
+        this._setPlaceholder(placeholders, vals[1]) +
         ")"
       );
     }
   };
 
-  _processInFilter = function (filter, not, condition, placeholders) {
-    //Validamos que sea un array
-    if (!Array.isArray(filter.val)) {
-      throw new DevsStudioNodejsqlError(
-        `Filter value should be an array when filter type is ${filter.type}`
-      );
-    }
+  _processInFilter(filter: FilterRequest, not: boolean, condition: string, placeholders: string[]) {
+
+    var vals = filter.val.split(",");
 
     var current_placeholders = [];
     //Cada elemento no debe ser array
-    for (var j = 0; j < filter.val.length; j++) {
-      if (Array.isArray(filter.val[j])) {
-        throw new DevsStudioNodejsqlError(
-          `Filter value shouldn't be an array neither object when filter type is ${filter.type}`
-        );
-      } else {
-        current_placeholders.push(
-          this._setPlaceholder(placeholders, filter.val[j])
-        );
-      }
+    for (var j = 0; j < vals.length; j++) {
+      current_placeholders.push(
+        this._setPlaceholder(placeholders, vals[j])
+      );
     }
 
     //Creamos
@@ -619,7 +547,7 @@ class NativeList {
     }
   };
 
-  _processNullFilter = function (filter, not, condition, placeholders) {
+  _processNullFilter(filter: FilterRequest, not: boolean, condition: string, placeholders: string[]) {
     //Creamos
     var column = this.getColumn(filter.attr);
     if (not) {
@@ -641,18 +569,13 @@ class NativeList {
     }
   };
 
-  _processTermFilter = function (filter, condition, placeholders) {
-    //
+  _processTermFilter(filter: FilterRequest, condition: string, placeholders: string[]) {
+    var attrs = filter.attr.split(",");
     //Recorremos las columnas para filtros OR
     var ors = [];
-    for (var j = 0; j < filter.attr.length; j++) {
-      if (Array.isArray(filter.val)) {
-        throw new DevsStudioNodejsqlError(
-          `Filter value shouldn't be an array neither object when filter type is ${filter.type}`
-        );
-      }
+    for (var j = 0; j < attrs.length; j++) {
 
-      var column = this.getColumn(filter.attr[j]);
+      var column = this.getColumn(attrs[j]);
       ors.push(
         column + " LIKE " + this._setPlaceholder(placeholders, filter.val)
       );
@@ -667,30 +590,7 @@ class NativeList {
     );
   };
 
-  _processSubFilter = function (filter, condition, placeholders) {
-    //Validamos que sea un array
-    if (!Array.isArray(filter.val)) {
-      throw new DevsStudioNodejsqlError(
-        `Filter value should be an array when filter type is ${filter.type}`
-      );
-    }
-
-    return (
-      " " +
-      this._getConn(filter.conn, condition) +
-      " (" +
-      this._setFilters(filter.val, "", placeholders) +
-      ")"
-    );
-  };
-
-  _processDateFilter = function (filter, condition, placeholders) {
-    //Validamos que no sea un array
-    if (Array.isArray(filter.val)) {
-      throw new DevsStudioNodejsqlError(
-        `Filter value shouldn't be an array neither object when filter type is ${filter.type}`
-      );
-    }
+  _processDateFilter(filter: FilterRequest, condition: string, placeholders: string[]) {
 
     //Creamos
     var column = this.getColumn(filter.attr);
@@ -708,17 +608,13 @@ class NativeList {
     );
   };
 
-  _processDateBetweenFilter = function (filter, condition, placeholders) {
-    //Validamos que sea un array
-    if (!Array.isArray(filter.val)) {
-      throw new DevsStudioNodejsqlError(
-        `Filter value should be an array when filter type is ${filter.type}`
-      );
-    }
+  _processDateBetweenFilter(filter: FilterRequest, condition: string, placeholders: string[]) {
 
-    if (!filter.val.length !== 2) {
+    var vals = filter.val.split(",");
+
+    if (vals.length !== 2) {
       throw new DevsStudioNodejsqlError(
-        `Filter value should be an array with two elements, when filter type is ${filter.type}`
+        `Splitted filter value should be an array with two elements, when filter type is ${filter.type}`
       );
     }
 
@@ -731,12 +627,10 @@ class NativeList {
       " (" +
       column +
       " BETWEEN DATE(" +
-      this._setPlaceholder(placeholders, filter.val[0]) +
+      this._setPlaceholder(placeholders, vals[0]) +
       ") AND DATE_ADD(DATE(" +
-      this._setPlaceholder(placeholders, filter.val[1]) +
+      this._setPlaceholder(placeholders, vals[1]) +
       "), INTERVAL 1 DAY))"
     );
   };
 }
-
-exports.NativeList = NativeList;

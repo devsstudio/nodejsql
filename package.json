@@ -1,6 +1,6 @@
 {
   "name": "@devs-studio/nodejsql",
-  "version": "1.0.22",
+  "version": "1.0.24",
   "description": "This README would normally document whatever steps are necessary to get your application up and running.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -21,5 +21,9 @@
     "nodejs",
     "sql",
     "api"
-  ]
+  ],
+  "dependencies": {
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.13.2"
+  }
 }
