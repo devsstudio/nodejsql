@@ -1,6 +1,7 @@
 import { Columns, ListParams } from "../dto/params/list.params";
 import { FilterRequest } from "../dto/request/filter.request";
 import { PaginationRequest } from "../dto/request/pagination.request";
+import { ListResponse } from "../dto/response/list.response";
 import { DevsStudioNodejsqlError } from "./error";
 
 export class NativeList {
@@ -64,7 +65,7 @@ export class NativeList {
     }
   }
 
-  async findAll(filters: FilterRequest[], pagination: PaginationRequest) {
+  async findAll(filters: FilterRequest[], pagination: PaginationRequest): Promise<ListResponse> {
     var placeholders: string[] = [];
     this.where = this._setFilters(filters, this.original_where, placeholders);
     this.offsetLimit = await this._setPagination(pagination);
@@ -160,7 +161,7 @@ export class NativeList {
     }
   };
 
-  private async _count(placeholders: any[]) {
+  private async _count(placeholders: string[]): Promise<number> {
     var sql = this.getCountSql();
     var items = await this.con.query(sql, placeholders);
     return items[0].count * 1;
