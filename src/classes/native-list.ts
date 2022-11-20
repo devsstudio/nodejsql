@@ -333,64 +333,54 @@ export class NativeList {
   };
 
   verifyFilterOperator(filter: FilterRequest) {
-    var valid_types = [
+    var list = [
       NativeList.FILTER_TYPE_SIMPLE,
       NativeList.FILTER_TYPE_COLUMN,
     ];
+    //Si está en la lista se verifica, de lo contrario no hay problema porque será ignorado
+    if (list.includes(filter.type)) {
 
-    var valid = !valid_types.includes(filter.type);
+      //Si no está seteado asuminos equal
+      if (filter.opr) {
+        filter.opr = filter.opr.toUpperCase();
+      } else {
+        filter.opr = NativeList.FILTER_OPERATOR_EQUAL;
+      }
 
-    //Attr no está permitido cuando el tipo de filtro es diferente a simple y column
-    if (filter.opr && valid) {
-      throw new DevsStudioNodejsqlError(
-        `Operator filter not allowed where filter type is ${filter.type}`
-      );
+      var valid_operators = [
+        NativeList.FILTER_OPERATOR_EQUAL,
+        NativeList.FILTER_OPERATOR_NOT_EQUAL,
+        NativeList.FILTER_OPERATOR_MAJOR,
+        NativeList.FILTER_OPERATOR_MAJOR_EQUAL,
+        NativeList.FILTER_OPERATOR_MINOR,
+        NativeList.FILTER_OPERATOR_MINOR_EQUAL,
+        NativeList.FILTER_OPERATOR_LIKE,
+      ];
+      //Verificamos si es un valor válido
+      if (!valid_operators.includes(filter.opr)) {
+        throw new DevsStudioNodejsqlError(
+          `Operator filter '${filter.opr}' not allowed`
+        );
+      }
     }
 
-    //Si no está seteado asuminos equal
-    if (filter.opr) {
-      filter.opr = filter.opr.toUpperCase();
-    } else {
-      filter.opr = NativeList.FILTER_OPERATOR_EQUAL;
-    }
 
-    var valid_operators = [
-      NativeList.FILTER_OPERATOR_EQUAL,
-      NativeList.FILTER_OPERATOR_NOT_EQUAL,
-      NativeList.FILTER_OPERATOR_MAJOR,
-      NativeList.FILTER_OPERATOR_MAJOR_EQUAL,
-      NativeList.FILTER_OPERATOR_MINOR,
-      NativeList.FILTER_OPERATOR_MINOR_EQUAL,
-      NativeList.FILTER_OPERATOR_LIKE,
-    ];
-    //Verificamos si es un valor válido
-    if (!valid_operators.includes(filter.opr)) {
-      throw new DevsStudioNodejsqlError(
-        `Operator filter '${filter.opr}' not allowed`
-      );
-    }
+
   };
 
   verifyFilterValue(filter: FilterRequest) {
-    var valid_types = [
+    var blacklist = [
       NativeList.FILTER_TYPE_NULL,
       NativeList.FILTER_TYPE_NOT_NULL,
     ];
 
-    var white = !valid_types.includes(filter.type);
-
-    //Val no está permitido cuando el tipo de filtro es null o not_null
-    if (filter.val && !white) {
-      throw new DevsStudioNodejsqlError(
-        `Value is not allowed when filter type is ${filter.type}"`
-      );
-    }
-
-    //Verificamos que exista (salvo que sea NULL o NOT_NULL)
-    if (typeof filter.val === "undefined" && white) {
-      throw new DevsStudioNodejsqlError(
-        `Value is required when filter type is ${filter.type}`
-      );
+    if (!blacklist.includes(filter.type)) {
+      //Verificamos que exista (salvo que sea NULL o NOT_NULL)
+      if (typeof filter.val === "undefined") {
+        throw new DevsStudioNodejsqlError(
+          `Value is required when filter type is ${filter.type}`
+        );
+      }
     }
   };
 
