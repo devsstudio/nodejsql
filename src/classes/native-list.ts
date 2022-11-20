@@ -124,7 +124,7 @@ export class NativeList {
 
   getSql() {
 
-    var selectPairs = Object.entries(this.columns).reduce((acc, curr) => { acc.push(curr[0] + " as " + curr[1]); return acc; }, []);
+    var selectPairs = Object.entries(this.columns).reduce((acc, curr) => { acc.push(curr[1] + " as " + curr[0]); return acc; }, []);
 
     var sql =
       "SELECT " +
