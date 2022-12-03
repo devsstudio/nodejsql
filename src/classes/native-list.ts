@@ -37,6 +37,7 @@ export class NativeList {
   columns: Columns;
   table: string;
   original_where: string;
+  exclusions: string[];
   where: string;
   group: string;
   order: string;
@@ -65,8 +66,9 @@ export class NativeList {
     }
   }
 
-  async findAll(filters: FilterRequest[], pagination: PaginationRequest): Promise<ListResponse> {
+  async findAll(filters: FilterRequest[], pagination: PaginationRequest, exclusions?: string[]): Promise<ListResponse> {
     var placeholders: string[] = [];
+    this.exclusions = exclusions ?? [];
     this.where = this._setFilters(filters, this.original_where, placeholders);
     this.offsetLimit = await this._setPagination(pagination);
     this.order = this._setOrder(pagination);
@@ -124,7 +126,20 @@ export class NativeList {
 
   getSql() {
 
-    var selectPairs = Object.entries(this.columns).reduce((acc, curr) => { acc.push(curr[1] + " as " + curr[0]); return acc; }, []);
+    var selectPairs = Object.entries(this.columns).reduce((acc, curr) => {
+      //Si la columna NO está excluida entonces la agregamos
+      if (!this.exclusions.includes(curr[0])) {
+        acc.push(curr[1] + " as " + curr[0]);
+      }
+      return acc;
+    }, []);
+
+    if (selectPairs.length === 0) {
+      selectPairs = Object.entries(this.columns).reduce((acc, curr) => {
+        acc.push(curr[1] + " as " + curr[0]);
+        return acc;
+      }, []);
+    }
 
     var sql =
       "SELECT " +
