@@ -1,7 +1,9 @@
-import { Columns, ListParams } from "../dto/params/list.params";
+import { ListParams } from "../dto/params/list.params";
 import { FilterRequest } from "../dto/request/filter.request";
+import { FindRequest } from "../dto/request/find.request";
 import { PaginationRequest } from "../dto/request/pagination.request";
 import { ListResponse } from "../dto/response/list.response";
+import { Columns, Order, Row } from "../interfaces/interfaces";
 import { DevsStudioNodejsqlError } from "./error";
 
 export class NativeList {
@@ -66,12 +68,23 @@ export class NativeList {
     }
   }
 
-  async findAll(filters: FilterRequest[], pagination: PaginationRequest, exclusions?: string[]): Promise<ListResponse> {
+  async findAll(filters: FilterRequest[], findRequest: FindRequest, exclusions?: string[]): Promise<Row[]> {
+    var placeholders: string[] = [];
+    this.exclusions = exclusions ?? [];
+    this.where = this._setFilters(filters, this.original_where, placeholders);
+    this.offsetLimit = await this._setLimit(findRequest);
+    this.order = this._setOrder(findRequest.order);
+    var sql = this.getSql();
+    //Obtenemos ítems
+    return await this.con.query(sql, placeholders);
+  }
+
+  async findPaginated(filters: FilterRequest[], pagination: PaginationRequest, exclusions?: string[]): Promise<ListResponse> {
     var placeholders: string[] = [];
     this.exclusions = exclusions ?? [];
     this.where = this._setFilters(filters, this.original_where, placeholders);
     this.offsetLimit = await this._setPagination(pagination);
-    this.order = this._setOrder(pagination);
+    this.order = this._setOrder(pagination.order);
     var sql = this.getSql();
     //Obtenemos ítems
     var items = await this.con.query(sql, placeholders);
@@ -237,10 +250,18 @@ export class NativeList {
     }
   };
 
-  private _setOrder(pagination: PaginationRequest) {
+  async _setLimit(findRequest: FindRequest) {
+    if (findRequest.limit > 0) {
+      return "LIMIT " + findRequest.limit;
+    } else {
+      return "";
+    }
+  };
+
+  private _setOrder(order: Order) {
     //Setting order
     var orderSql = [];
-    for (const [key, value] of Object.entries(pagination.order)) {
+    for (const [key, value] of Object.entries(order)) {
       orderSql.push(this.columns[key] + " " + value);
     }
     if (orderSql.length > 0) {

@@ -1,6 +1,4 @@
-export interface Row {
-    [column: string]: any
-}
+import { Row } from "../../interfaces/interfaces";
 
 export class ListResponse {
     page: number;

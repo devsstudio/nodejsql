@@ -1,9 +1,6 @@
 import { Transform } from 'class-transformer';
 import { IsBoolean, IsInt, IsOptional, IsPositive, Max } from 'class-validator';
-
-interface Order {
-  [index: string]: string
-}
+import { Order } from '../../interfaces/interfaces';
 
 export class PaginationRequest {
 
