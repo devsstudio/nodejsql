@@ -1,8 +1,10 @@
 import { ListParams } from "../dto/params/list.params";
 import { FilterRequest } from "../dto/request/filter.request";
 import { FindRequest } from "../dto/request/find.request";
+import { InfiniteScrollRequest } from "../dto/request/infinite-scroll.request";
 import { PaginationRequest } from "../dto/request/pagination.request";
 import { ListResponse } from "../dto/response/list.response";
+import { Select2Response } from "../dto/response/select2.response";
 import { Columns, Order, Row } from "../interfaces/interfaces";
 import { DevsStudioNodejsqlError } from "./error";
 
@@ -39,7 +41,6 @@ export class NativeList {
   columns: Columns;
   table: string;
   original_where: string;
-  exclusions: string[];
   where: string;
   group: string;
   order: string;
@@ -70,22 +71,41 @@ export class NativeList {
 
   async findAll(filters: FilterRequest[], findRequest: FindRequest, exclusions?: string[]): Promise<Row[]> {
     var placeholders: string[] = [];
-    this.exclusions = exclusions ?? [];
     this.where = this._setFilters(filters, this.original_where, placeholders);
     this.offsetLimit = await this._setLimit(findRequest);
     this.order = this._setOrder(findRequest.order);
-    var sql = this.getSql();
+
+    var selectPairs = this.getSelectPairs(exclusions ?? []);
+    var sql = this.getSql(selectPairs);
     //Obtenemos ítems
     return await this.con.query(sql, placeholders);
   }
 
+  async findSelect2(filters: FilterRequest[], infiniteScroll: InfiniteScrollRequest, valueAttribute: string, textAttribute: string): Promise<Select2Response> {
+    var placeholders: string[] = [];
+    this.where = this._setFilters(filters, this.original_where, placeholders);
+    this.offsetLimit = await this._setInfiniteScroll(infiniteScroll);
+    this.order = this._setOrder(infiniteScroll.order);
+
+    var selectPairs = this.getSelect2Pairs(valueAttribute, textAttribute);
+    var sql = this.getSql(selectPairs);
+    //Obtenemos ítems
+    var items = await this.con.query(sql, placeholders);
+
+    //COUNT
+    return {
+      items: items,
+    };
+  }
+
   async findPaginated(filters: FilterRequest[], pagination: PaginationRequest, exclusions?: string[]): Promise<ListResponse> {
     var placeholders: string[] = [];
-    this.exclusions = exclusions ?? [];
     this.where = this._setFilters(filters, this.original_where, placeholders);
     this.offsetLimit = await this._setPagination(pagination);
     this.order = this._setOrder(pagination.order);
-    var sql = this.getSql();
+
+    var selectPairs = this.getSelectPairs(exclusions ?? []);
+    var sql = this.getSql(selectPairs);
     //Obtenemos ítems
     var items = await this.con.query(sql, placeholders);
 
@@ -137,11 +157,10 @@ export class NativeList {
     return sql;
   }
 
-  getSql() {
-
+  getSelectPairs(exclusions: string[]) {
     var selectPairs = Object.entries(this.columns).reduce((acc, curr) => {
       //Si la columna NO está excluida entonces la agregamos
-      if (!this.exclusions.includes(curr[0])) {
+      if (!exclusions.includes(curr[0])) {
         acc.push(curr[1] + " as " + curr[0]);
       }
       return acc;
@@ -153,6 +172,18 @@ export class NativeList {
         return acc;
       }, []);
     }
+
+    return selectPairs;
+  }
+
+  getSelect2Pairs(valueAttribute: string, textAttribute: string) {
+    var selectPairs = [];
+    selectPairs.push(this.columns[valueAttribute] + " as value");
+    selectPairs.push(this.columns[textAttribute] + " as label");
+    return selectPairs;
+  }
+
+  getSql(selectPairs: string[]) {
 
     var sql =
       "SELECT " +
@@ -245,6 +276,25 @@ export class NativeList {
         pagination.limit * pagination.page - pagination.limit
       );
       return "LIMIT " + pagination.limit + " OFFSET " + offset;
+    } else {
+      return "";
+    }
+  };
+
+  async _setInfiniteScroll(infiniteScroll: InfiniteScrollRequest) {
+    if (typeof infiniteScroll.limit === "undefined" || infiniteScroll.limit === null) {
+      infiniteScroll.limit = 10;
+    }
+
+    if (typeof infiniteScroll.page === "undefined" || infiniteScroll.page === null) {
+      infiniteScroll.page = 1;
+    }
+
+    if (infiniteScroll.limit > 0) {
+      var offset = Math.floor(
+        infiniteScroll.limit * infiniteScroll.page - infiniteScroll.limit
+      );
+      return "LIMIT " + infiniteScroll.limit + " OFFSET " + offset;
     } else {
       return "";
     }
