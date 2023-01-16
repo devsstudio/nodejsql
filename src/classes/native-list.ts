@@ -231,7 +231,13 @@ export class NativeList {
 
   private _setPlaceholder(placeholders: string[], value: string) {
     placeholders.push(value);
-    return "?";
+    
+    switch (this.con.connection.driver.constructor.name) {
+      case 'MysqlDriver':
+        return '?';
+      default:
+        return "$" + (placeholders.length).toString();
+    }
   };
 
   private _setFilters(filters: FilterRequest[], condition: string, placeholders: string[]) {
