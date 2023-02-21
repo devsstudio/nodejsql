@@ -35,6 +35,7 @@ export class NativeList {
   static FILTER_OPERATOR_MINOR = "<";
   static FILTER_OPERATOR_MINOR_EQUAL = "<=";
   static FILTER_OPERATOR_LIKE = "LIKE";
+  static FILTER_OPERATOR_ILIKE = "ILIKE";
   //
   static SORT_RAND = "RAND";
 
@@ -447,6 +448,7 @@ export class NativeList {
         NativeList.FILTER_OPERATOR_MINOR,
         NativeList.FILTER_OPERATOR_MINOR_EQUAL,
         NativeList.FILTER_OPERATOR_LIKE,
+        NativeList.FILTER_OPERATOR_ILIKE,
       ];
       //Verificamos si es un valor válido
       if (!valid_operators.includes(filter.opr)) {
