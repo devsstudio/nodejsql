@@ -232,7 +232,7 @@ export class NativeList {
 
   private _setPlaceholder(placeholders: string[], value: string) {
     placeholders.push(value);
-    
+
     switch (this.con.connection.driver.constructor.name) {
       case 'MysqlDriver':
         return '?';
@@ -431,35 +431,54 @@ export class NativeList {
       NativeList.FILTER_TYPE_COLUMN,
     ];
     //Si está en la lista se verifica, de lo contrario no hay problema porque será ignorado
-    if (list.includes(filter.type)) {
+    switch (filter.type) {
+      case NativeList.FILTER_TYPE_SIMPLE:
+      case NativeList.FILTER_TYPE_COLUMN:
 
-      //Si no está seteado asuminos equal
-      if (filter.opr) {
-        filter.opr = filter.opr.toUpperCase();
-      } else {
-        filter.opr = NativeList.FILTER_OPERATOR_EQUAL;
-      }
+        //Si no está seteado asumimos equal
+        if (filter.opr) {
+          filter.opr = filter.opr.toUpperCase();
+        } else {
+          filter.opr = NativeList.FILTER_OPERATOR_EQUAL;
+        }
 
-      var valid_operators = [
-        NativeList.FILTER_OPERATOR_EQUAL,
-        NativeList.FILTER_OPERATOR_NOT_EQUAL,
-        NativeList.FILTER_OPERATOR_MAJOR,
-        NativeList.FILTER_OPERATOR_MAJOR_EQUAL,
-        NativeList.FILTER_OPERATOR_MINOR,
-        NativeList.FILTER_OPERATOR_MINOR_EQUAL,
-        NativeList.FILTER_OPERATOR_LIKE,
-        NativeList.FILTER_OPERATOR_ILIKE,
-      ];
-      //Verificamos si es un valor válido
-      if (!valid_operators.includes(filter.opr)) {
-        throw new DevsStudioNodejsqlError(
-          `Operator filter '${filter.opr}' not allowed`
-        );
-      }
+        var valid_operators = [
+          NativeList.FILTER_OPERATOR_EQUAL,
+          NativeList.FILTER_OPERATOR_NOT_EQUAL,
+          NativeList.FILTER_OPERATOR_MAJOR,
+          NativeList.FILTER_OPERATOR_MAJOR_EQUAL,
+          NativeList.FILTER_OPERATOR_MINOR,
+          NativeList.FILTER_OPERATOR_MINOR_EQUAL,
+          NativeList.FILTER_OPERATOR_LIKE,
+          NativeList.FILTER_OPERATOR_ILIKE,
+        ];
+        //Verificamos si es un valor válido
+        if (!valid_operators.includes(filter.opr)) {
+          throw new DevsStudioNodejsqlError(
+            `Operator filter '${filter.opr}' not allowed`
+          );
+        }
+        break;
+      case NativeList.FILTER_TYPE_TERM:
+        //Si no está seteado asumimos LIKE
+        if (filter.opr) {
+          filter.opr = filter.opr.toUpperCase();
+        } else {
+          filter.opr = NativeList.FILTER_OPERATOR_LIKE;
+        }
+
+        var valid_operators = [
+          NativeList.FILTER_OPERATOR_LIKE,
+          NativeList.FILTER_OPERATOR_ILIKE,
+        ];
+        //Verificamos si es un valor válido
+        if (!valid_operators.includes(filter.opr)) {
+          throw new DevsStudioNodejsqlError(
+            `Operator filter '${filter.opr}' not allowed in term condition`
+          );
+        }
+        break;
     }
-
-
-
   };
 
   verifyFilterValue(filter: FilterRequest) {
@@ -665,7 +684,7 @@ export class NativeList {
 
       var column = this.getColumn(attrs[j]);
       ors.push(
-        column + " LIKE " + this._setPlaceholder(placeholders, filter.val)
+        column + " " + filter.opr + " " + this._setPlaceholder(placeholders, filter.val)
       );
     }
 
