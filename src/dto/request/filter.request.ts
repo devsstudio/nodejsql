@@ -27,7 +27,9 @@ export class FilterRequest {
         ">=",
         "<",
         "<=",
-        "LIKE"])
+        "LIKE",
+        "ILIKE"
+    ])
     opr: string = "=";
 
     @IsOptional()
