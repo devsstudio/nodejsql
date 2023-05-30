@@ -1,6 +1,6 @@
 {
   "name": "@devs-studio/nodejsql",
-  "version": "1.0.45",
+  "version": "1.0.47",
   "description": "This README would normally document whatever steps are necessary to get your application up and running.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

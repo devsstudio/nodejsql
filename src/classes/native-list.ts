@@ -236,6 +236,7 @@ export class NativeList {
     switch (this.con.connection.driver.constructor.name) {
       case 'MysqlDriver':
         return '?';
+      case 'PostgresDriver':
       default:
         return "$" + (placeholders.length).toString();
     }
@@ -702,17 +703,33 @@ export class NativeList {
     //Creamos
     var column = this.getColumn(filter.attr);
 
-    return (
-      " " +
-      this._getConn(filter.conn, condition) +
-      " (" +
-      column +
-      " BETWEEN DATE(" +
-      this._setPlaceholder(placeholders, filter.val) +
-      ") AND DATE_ADD(DATE(" +
-      this._setPlaceholder(placeholders, filter.val) +
-      "), INTERVAL 1 DAY))"
-    );
+    switch (this.con.connection.driver.constructor.name) {
+      case 'MysqlDriver':
+        return (
+          " " +
+          this._getConn(filter.conn, condition) +
+          " (" +
+          column +
+          " BETWEEN DATE(" +
+          this._setPlaceholder(placeholders, filter.val) +
+          ") AND DATE_ADD(DATE(" +
+          this._setPlaceholder(placeholders, filter.val) +
+          "), INTERVAL 1 DAY))"
+        );
+      case 'PostgresDriver':
+      default:
+        return (
+          " " +
+          this._getConn(filter.conn, condition) +
+          " (" +
+          column +
+          " BETWEEN (" +
+          this._setPlaceholder(placeholders, filter.val) +
+          ")::DATE AND (" +
+          this._setPlaceholder(placeholders, filter.val) +
+          ")::DATE + interval '1 days')"
+        );
+    }
   };
 
   _processDateBetweenFilter(filter: FilterRequest, condition: string, placeholders: string[]) {
@@ -728,16 +745,32 @@ export class NativeList {
     //Creamos
     var column = this.getColumn(filter.attr);
 
-    return (
-      " " +
-      this._getConn(filter.conn, condition) +
-      " (" +
-      column +
-      " BETWEEN DATE(" +
-      this._setPlaceholder(placeholders, vals[0]) +
-      ") AND DATE_ADD(DATE(" +
-      this._setPlaceholder(placeholders, vals[1]) +
-      "), INTERVAL 1 DAY))"
-    );
+    switch (this.con.connection.driver.constructor.name) {
+      case 'MysqlDriver':
+        return (
+          " " +
+          this._getConn(filter.conn, condition) +
+          " (" +
+          column +
+          " BETWEEN DATE(" +
+          this._setPlaceholder(placeholders, vals[0]) +
+          ") AND DATE_ADD(DATE(" +
+          this._setPlaceholder(placeholders, vals[1]) +
+          "), INTERVAL 1 DAY))"
+        );
+      case 'PostgresDriver':
+      default:
+        return (
+          " " +
+          this._getConn(filter.conn, condition) +
+          " (" +
+          column +
+          " BETWEEN (" +
+          this._setPlaceholder(placeholders, vals[0]) +
+          ")::DATE AND (" +
+          this._setPlaceholder(placeholders, vals[1]) +
+          ")::DATE + interval '1 days')"
+        );
+    }
   };
 }
