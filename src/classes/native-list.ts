@@ -710,11 +710,11 @@ export class NativeList {
           this._getConn(filter.conn, condition) +
           " (" +
           column +
-          " BETWEEN DATE(" +
+          " BETWEEN " +
           this._setPlaceholder(placeholders, filter.val) +
-          ") AND DATE_ADD(DATE(" +
+          " AND DATE_ADD(" +
           this._setPlaceholder(placeholders, filter.val) +
-          "), INTERVAL 1 DAY))"
+          ", INTERVAL 1 DAY))"
         );
       case 'PostgresDriver':
       default:
@@ -725,9 +725,9 @@ export class NativeList {
           column +
           " BETWEEN (" +
           this._setPlaceholder(placeholders, filter.val) +
-          ")::DATE AND (" +
+          ")::TIMESTAMP AND (" +
           this._setPlaceholder(placeholders, filter.val) +
-          ")::DATE + interval '1 days')"
+          ")::TIMESTAMP + interval '1 days')"
         );
     }
   };
@@ -752,11 +752,11 @@ export class NativeList {
           this._getConn(filter.conn, condition) +
           " (" +
           column +
-          " BETWEEN DATE(" +
+          " BETWEEN " +
           this._setPlaceholder(placeholders, vals[0]) +
-          ") AND DATE_ADD(DATE(" +
+          " AND DATE_ADD(" +
           this._setPlaceholder(placeholders, vals[1]) +
-          "), INTERVAL 1 DAY))"
+          ", INTERVAL 1 DAY))"
         );
       case 'PostgresDriver':
       default:
@@ -767,9 +767,9 @@ export class NativeList {
           column +
           " BETWEEN (" +
           this._setPlaceholder(placeholders, vals[0]) +
-          ")::DATE AND (" +
+          ")::TIMESTAMP AND (" +
           this._setPlaceholder(placeholders, vals[1]) +
-          ")::DATE + interval '1 days')"
+          ")::TIMESTAMP + interval '1 days')"
         );
     }
   };
