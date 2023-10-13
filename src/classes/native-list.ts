@@ -2,7 +2,9 @@ import { ListParams } from "../dto/params/list.params";
 import { FilterRequest } from "../dto/request/filter.request";
 import { FindRequest } from "../dto/request/find.request";
 import { InfiniteScrollRequest } from "../dto/request/infinite-scroll.request";
+import { PaginationOffsetRequest } from "../dto/request/pagination-offset.request";
 import { PaginationRequest } from "../dto/request/pagination.request";
+import { ListOffsetResponse } from "../dto/response/list-offset.response";
 import { ListResponse } from "../dto/response/list.response";
 import { Select2Response } from "../dto/response/select2.response";
 import { Columns, Order, Row } from "../interfaces/interfaces";
@@ -138,6 +140,39 @@ export class NativeList {
         items: items,
       };
     }
+  }
+
+  async findPaginatedOffset(filters: FilterRequest[], pagination: PaginationOffsetRequest, exclusions?: string[]): Promise<ListOffsetResponse> {
+
+    //Contamos sin filtros (solo con el original where)
+    var total_items = 0;
+    if (filters.length > 0) {
+      total_items = await this._count(placeholders);
+    }
+
+    var placeholders: string[] = [];
+    this.where = this._setFilters(filters, this.original_where, placeholders);
+    this.offsetLimit = await this._setPaginationOffset(pagination);
+    this.order = this._setOrder(pagination.order);
+
+    var selectPairs = this.getSelectPairs(exclusions ?? []);
+    var sql = this.getSql(selectPairs);
+    //Obtenemos ítems
+    var items = await this.con.query(sql, placeholders);
+
+    //COUNT
+    var filtered_items = await this._count(placeholders);
+    if (filters.length === 0) {
+      total_items = filtered_items;
+    }
+
+    return {
+      offset: pagination.offset * 1,
+      limit: pagination.limit * 1,
+      total_items: total_items,
+      filtered_items: filtered_items,
+      items: items,
+    };
   }
 
   async count(filters: FilterRequest[]) {
@@ -286,6 +321,23 @@ export class NativeList {
       return "LIMIT " + pagination.limit + " OFFSET " + offset;
     } else {
       return "";
+    }
+  };
+
+  async _setPaginationOffset(pagination: PaginationOffsetRequest) {
+
+    if (typeof pagination.limit === "undefined" || pagination.limit === null) {
+      pagination.limit = 10;
+    }
+
+    if (typeof pagination.offset === "undefined" || pagination.offset === null) {
+      pagination.offset = 0;
+    }
+
+    if (pagination.limit > 0) {
+      return "LIMIT " + pagination.limit + " OFFSET " + pagination.offset;
+    } else {
+      return "OFFSET " + pagination.offset;
     }
   };
 
