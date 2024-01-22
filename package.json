@@ -15,7 +15,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git@bitbucket.org:JeanPaper/devsstudio-nodejsql.git"
+    "url": "https://github.com/devsstudio/nodejsql.git"
   },
   "keywords": [
     "nodejs",
