@@ -1,3 +1,4 @@
+import { isNumber, isNumberString } from "class-validator";
 import { ListParams } from "../dto/params/list.params";
 import { FilterRequest } from "../dto/request/filter.request";
 import { FindRequest } from "../dto/request/find.request";
@@ -20,6 +21,7 @@ export class NativeList {
   static FILTER_TYPE_NULL = "NULL";
   static FILTER_TYPE_NOT_NULL = "NOT_NULL";
   static FILTER_TYPE_DATE = "DATE";
+  static FILTER_TYPE_NUMERIC = "NUMERIC";
   // static FILTER_TYPE_YEAR = "YEAR";
   // static FILTER_TYPE_MONTH = "MONTH";
   // static FILTER_TYPE_DAY = "DAY";
@@ -407,6 +409,7 @@ export class NativeList {
       NativeList.FILTER_TYPE_NULL,
       NativeList.FILTER_TYPE_NOT_NULL,
       NativeList.FILTER_TYPE_DATE,
+      NativeList.FILTER_TYPE_NUMERIC,
       // NativeList.FILTER_TYPE_YEAR,
       // NativeList.FILTER_TYPE_MONTH,
       // NativeList.FILTER_TYPE_DAY,
@@ -512,6 +515,30 @@ export class NativeList {
           );
         }
         break;
+      case NativeList.FILTER_TYPE_NUMERIC:
+
+        //Si no está seteado asumimos equal
+        if (filter.opr) {
+          filter.opr = filter.opr.toUpperCase();
+        } else {
+          filter.opr = NativeList.FILTER_OPERATOR_EQUAL;
+        }
+
+        var valid_operators = [
+          NativeList.FILTER_OPERATOR_EQUAL,
+          NativeList.FILTER_OPERATOR_NOT_EQUAL,
+          NativeList.FILTER_OPERATOR_MAJOR,
+          NativeList.FILTER_OPERATOR_MAJOR_EQUAL,
+          NativeList.FILTER_OPERATOR_MINOR,
+          NativeList.FILTER_OPERATOR_MINOR_EQUAL,
+        ];
+        //Verificamos si es un valor válido
+        if (!valid_operators.includes(filter.opr)) {
+          throw new DevsStudioNodejsqlError(
+            `Operator filter '${filter.opr}' not allowed`
+          );
+        }
+        break;
       case NativeList.FILTER_TYPE_TERM:
         //Si no está seteado asumimos LIKE
         if (filter.opr) {
@@ -582,6 +609,8 @@ export class NativeList {
         return this._processTermFilter(filter, condition, placeholders);
       case NativeList.FILTER_TYPE_DATE:
         return this._processDateFilter(filter, condition, placeholders);
+      case NativeList.FILTER_TYPE_NUMERIC:
+        return this._processNumericFilter(filter, condition, placeholders);
       case NativeList.FILTER_TYPE_DATE_BETWEEN:
         return this._processDateBetweenFilter(filter, condition, placeholders);
     }
@@ -601,6 +630,25 @@ export class NativeList {
       filter.opr +
       " " +
       this._setPlaceholder(placeholders, filter.val) +
+      ")"
+    );
+  };
+
+  private _processNumericFilter(filter: FilterRequest, condition: string, placeholders: string[]) {
+
+    //Creamos
+    var column = this.getColumn(filter.attr);
+    const is_number = isNumber(filter.val) || isNumberString(filter.val);
+
+    return (
+      " " +
+      this._getConn(filter.conn, condition) +
+      " (" +
+      column +
+      " " +
+      filter.opr +
+      " " +
+      this._setPlaceholder(placeholders, (is_number ? filter.val : '0')) +
       ")"
     );
   };
