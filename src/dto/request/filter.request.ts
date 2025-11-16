@@ -1,40 +1,26 @@
-import { IsDefined, IsIn, IsOptional } from "class-validator";
+import { IsDefined, IsEnum, IsIn, IsOptional, ValidateIf } from "class-validator";
+import { NodeJSQLFilterConnector, NodeJSQLFilterOperator, NodeJSQLFilterType } from "../enums/enums";
 
 export class FilterRequest {
     @IsOptional()
-    @IsIn(["SIMPLE",
-        "COLUMN",
-        "SUB",
-        "BETWEEN",
-        "NOT_BETWEEN",
-        "IN",
-        "NOT_IN",
-        "NULL",
-        "NOT_NULL",
-        "DATE", "DATE_BETWEEN", "TERM"])
-    type: string = "SIMPLE";
+    @IsEnum(NodeJSQLFilterType)
+    type: NodeJSQLFilterType = NodeJSQLFilterType.SIMPLE;
 
     @IsDefined()
-    attr: string;
+    attr!: string;
 
+    @ValidateIf((val) => ![NodeJSQLFilterType.NULL, NodeJSQLFilterType.NOT_NULL].includes(val.type))
     @IsDefined()
-    val: string;
+    val: string | null = null;
+
+    @ValidateIf((val) => ![NodeJSQLFilterType.SIMPLE, NodeJSQLFilterType.COLUMN, NodeJSQLFilterType.NUMERIC, NodeJSQLFilterType.TERM].includes(val.type))
+    @IsDefined()
+    @IsEnum(NodeJSQLFilterOperator)
+    opr: NodeJSQLFilterOperator = NodeJSQLFilterOperator.EQUAL;
 
     @IsOptional()
-    @IsIn(["=",
-        "<>",
-        ">",
-        ">=",
-        "<",
-        "<=",
-        "LIKE",
-        "ILIKE"
-    ])
-    opr: string = "=";
-
-    @IsOptional()
-    @IsIn(["AND", "OR"])
-    conn: string = "AND";
+    @IsEnum(NodeJSQLFilterConnector)
+    conn: NodeJSQLFilterConnector = NodeJSQLFilterConnector.AND;
 }
 
 

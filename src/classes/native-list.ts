@@ -1,4 +1,4 @@
-import { isNumber, isNumberString } from "class-validator";
+import { isNumber, isNumberString, validate } from "class-validator";
 import { ListParams } from "../dto/params/list.params";
 import { FilterRequest } from "../dto/request/filter.request";
 import { FindRequest } from "../dto/request/find.request";
@@ -10,37 +10,12 @@ import { ListResponse } from "../dto/response/list.response";
 import { Select2Response } from "../dto/response/select2.response";
 import { Columns, Order, Row } from "../interfaces/interfaces";
 import { DevsStudioNodejsqlError } from "./error";
+import { NodeJSQLFilterConnector, NodeJSQLFilterOperator, NodeJSQLFilterType } from "../dto/enums/enums";
+import { plainToInstance } from "class-transformer";
+
 
 export class NativeList {
-  static FILTER_TYPE_SIMPLE = "SIMPLE";
-  static FILTER_TYPE_COLUMN = "COLUMN";
-  static FILTER_TYPE_BETWEEN = "BETWEEN";
-  static FILTER_TYPE_NOT_BETWEEN = "NOT_BETWEEN";
-  static FILTER_TYPE_IN = "IN";
-  static FILTER_TYPE_NOT_IN = "NOT_IN";
-  static FILTER_TYPE_NULL = "NULL";
-  static FILTER_TYPE_NOT_NULL = "NOT_NULL";
-  static FILTER_TYPE_DATE = "DATE";
-  static FILTER_TYPE_NUMERIC = "NUMERIC";
-  // static FILTER_TYPE_YEAR = "YEAR";
-  // static FILTER_TYPE_MONTH = "MONTH";
-  // static FILTER_TYPE_DAY = "DAY";
-  // static FILTER_TYPE_TIME = "TIME";
-  static FILTER_TYPE_DATE_BETWEEN = "DATE_BETWEEN";
-  static FILTER_TYPE_TERM = "TERM";
-  //
-  static FILTER_CONNECTOR_AND = "AND";
-  static FILTER_CONNECTOR_OR = "OR";
-  //
-  static FILTER_OPERATOR_EQUAL = "=";
-  static FILTER_OPERATOR_NOT_EQUAL = "<>";
-  static FILTER_OPERATOR_MAJOR = ">";
-  static FILTER_OPERATOR_MAJOR_EQUAL = ">=";
-  static FILTER_OPERATOR_MINOR = "<";
-  static FILTER_OPERATOR_MINOR_EQUAL = "<=";
-  static FILTER_OPERATOR_LIKE = "LIKE";
-  static FILTER_OPERATOR_ILIKE = "ILIKE";
-  //
+
   static SORT_RAND = "RAND";
 
   columns: Columns;
@@ -48,13 +23,14 @@ export class NativeList {
   original_where: string;
   where: string;
   group: string;
-  order: string;
-  offsetLimit: string;
-  placeholders: string;
-  con: any;
+  order: string = "";
+  offsetLimit: string = "";
+
+  private connection: any;
+
 
   constructor(con: any, baseParams: ListParams) {
-    this.con = con;
+    this.connection = con;
 
     this.columns = baseParams.columns;
     this.table = "FROM " + baseParams.table;
@@ -76,26 +52,26 @@ export class NativeList {
 
   async findAll(filters: FilterRequest[], findRequest: FindRequest, exclusions?: string[]): Promise<Row[]> {
     var placeholders: string[] = [];
-    this.where = this._setFilters(filters, this.original_where, placeholders);
+    this.where = await this._setFilters(filters, this.original_where, placeholders);
     this.offsetLimit = await this._setLimit(findRequest);
     this.order = this._setOrder(findRequest.order);
 
     var selectPairs = this.getSelectPairs(exclusions ?? []);
     var sql = this.getSql(selectPairs);
     //Obtenemos ítems
-    return await this.con.query(sql, placeholders);
+    return await this.connection.query(sql, placeholders);
   }
 
   async findSelect2(filters: FilterRequest[], infiniteScroll: InfiniteScrollRequest, valueAttribute: string, textAttribute: string): Promise<Select2Response> {
     var placeholders: string[] = [];
-    this.where = this._setFilters(filters, this.original_where, placeholders);
+    this.where = await this._setFilters(filters, this.original_where, placeholders);
     this.offsetLimit = await this._setInfiniteScroll(infiniteScroll);
     this.order = this._setOrder(infiniteScroll.order);
 
     var selectPairs = this.getSelect2Pairs(valueAttribute, textAttribute);
     var sql = this.getSql(selectPairs);
     //Obtenemos ítems
-    var items = await this.con.query(sql, placeholders);
+    var items = await this.connection.query(sql, placeholders);
 
     //COUNT
     return {
@@ -105,14 +81,14 @@ export class NativeList {
 
   async findPaginated(filters: FilterRequest[], pagination: PaginationRequest, exclusions?: string[]): Promise<ListResponse> {
     var placeholders: string[] = [];
-    this.where = this._setFilters(filters, this.original_where, placeholders);
+    this.where = await this._setFilters(filters, this.original_where, placeholders);
     this.offsetLimit = await this._setPagination(pagination);
     this.order = this._setOrder(pagination.order);
 
     var selectPairs = this.getSelectPairs(exclusions ?? []);
     var sql = this.getSql(selectPairs);
     //Obtenemos ítems
-    var items = await this.con.query(sql, placeholders);
+    var items = await this.connection.query(sql, placeholders);
 
     //COUNT
     if (pagination.count) {
@@ -149,18 +125,18 @@ export class NativeList {
     //Contamos sin filtros (solo con el original where)
     var total_items = 0;
     if (filters.length > 0) {
-      total_items = await this._count(placeholders);
+      total_items = await this._count([]);
     }
 
     var placeholders: string[] = [];
-    this.where = this._setFilters(filters, this.original_where, placeholders);
+    this.where = await this._setFilters(filters, this.original_where, placeholders);
     this.offsetLimit = await this._setPaginationOffset(pagination);
     this.order = this._setOrder(pagination.order);
 
     var selectPairs = this.getSelectPairs(exclusions ?? []);
     var sql = this.getSql(selectPairs);
     //Obtenemos ítems
-    var items = await this.con.query(sql, placeholders);
+    var items = await this.connection.query(sql, placeholders);
 
     //COUNT
     var filtered_items = await this._count(placeholders);
@@ -179,7 +155,7 @@ export class NativeList {
 
   async count(filters: FilterRequest[]) {
     var placeholders: string[] = [];
-    this.where = this._setFilters(filters, this.original_where, placeholders);
+    this.where = await this._setFilters(filters, this.original_where, placeholders);
 
     return await this._count(placeholders);
   }
@@ -196,19 +172,13 @@ export class NativeList {
   }
 
   getSelectPairs(exclusions: string[]) {
-    var selectPairs = Object.entries(this.columns).reduce((acc, curr) => {
-      //Si la columna NO está excluida entonces la agregamos
-      if (!exclusions.includes(curr[0])) {
-        acc.push(curr[1] + " as " + curr[0]);
-      }
-      return acc;
-    }, []);
+
+    var selectPairs = Object.entries(this.columns)
+      .filter(([key]) => !exclusions.includes(key))
+      .map(([key, value]) => `${value} as ${key}`);
 
     if (selectPairs.length === 0) {
-      selectPairs = Object.entries(this.columns).reduce((acc, curr) => {
-        acc.push(curr[1] + " as " + curr[0]);
-        return acc;
-      }, []);
+      selectPairs = Object.entries(this.columns).map(([key, value]) => `${value} as ${key}`);
     }
 
     return selectPairs;
@@ -263,14 +233,14 @@ export class NativeList {
 
   private async _count(placeholders: string[]): Promise<number> {
     var sql = this.getCountSql();
-    var items = await this.con.query(sql, placeholders);
+    var items = await this.connection.query(sql, placeholders);
     return items[0].count * 1;
   };
 
   private _setPlaceholder(placeholders: string[], value: string) {
     placeholders.push(value);
 
-    switch (this.con.connection.driver.constructor.name) {
+    switch (this.connection.connection.driver.constructor.name) {
       case 'MysqlDriver':
         return '?';
       case 'PostgresDriver':
@@ -279,15 +249,19 @@ export class NativeList {
     }
   };
 
-  private _setFilters(filters: FilterRequest[], condition: string, placeholders: string[]) {
+  private async _setFilters(filters: FilterRequest[], condition: string, placeholders: string[]) {
     if (Array.isArray(filters)) {
       for (var i = 0; i < filters.length; i++) {
         if (typeof filters[i] === "object" && filters[i] !== null) {
-          this._verifyFilterType(filters[i]);
-          this.verifyFilterConnector(filters[i]);
+
+          filters[i] = plainToInstance(FilterRequest, filters[i]);
+          var errors = await validate(filters[i]);
+          if (errors.length > 0) {
+            throw DevsStudioNodejsqlError.fromValidationErrors(errors);
+          }
+
           this.verifyFilterOperator(filters[i]);
           this.verifyFilterAttribute(filters[i]);
-          this.verifyFilterValue(filters[i]);
           //Procesamos filtro
           condition += this._processFilter(filters[i], condition, placeholders);
         } else {
@@ -387,79 +361,13 @@ export class NativeList {
     return this.columns[alias];
   };
 
-  private _getConn(conn: any, condition: string) {
+  private _getConn(conn: NodeJSQLFilterConnector, condition: string) {
     return condition.trim().length > 0 ? conn : "";
   };
 
-  private _verifyFilterType(filter: FilterRequest) {
-    //Si no existe seteamos por defecto
-    if (filter.type) {
-      filter.type = filter.type.toUpperCase();
-    } else {
-      filter.type = NativeList.FILTER_TYPE_SIMPLE;
-    }
-
-    var valid_types = [
-      NativeList.FILTER_TYPE_SIMPLE,
-      NativeList.FILTER_TYPE_COLUMN,
-      NativeList.FILTER_TYPE_BETWEEN,
-      NativeList.FILTER_TYPE_NOT_BETWEEN,
-      NativeList.FILTER_TYPE_IN,
-      NativeList.FILTER_TYPE_NOT_IN,
-      NativeList.FILTER_TYPE_NULL,
-      NativeList.FILTER_TYPE_NOT_NULL,
-      NativeList.FILTER_TYPE_DATE,
-      NativeList.FILTER_TYPE_NUMERIC,
-      // NativeList.FILTER_TYPE_YEAR,
-      // NativeList.FILTER_TYPE_MONTH,
-      // NativeList.FILTER_TYPE_DAY,
-      // NativeList.FILTER_TYPE_TIME,
-      NativeList.FILTER_TYPE_DATE_BETWEEN,
-      NativeList.FILTER_TYPE_TERM,
-    ];
-
-    //Chequeamos si está en el array
-    if (!valid_types.includes(filter.type)) {
-      throw new DevsStudioNodejsqlError(
-        `Invalid filter type: ${filter.type}`
-      );
-    }
-  };
-
-  verifyFilterConnector(filter: FilterRequest) {
-    //Si no existe seteamos por defecto
-    if (filter.conn) {
-      filter.conn = filter.conn.toUpperCase();
-    } else {
-      filter.conn = NativeList.FILTER_CONNECTOR_AND;
-    }
-
-    var valid_conn = [
-      NativeList.FILTER_CONNECTOR_AND,
-      NativeList.FILTER_CONNECTOR_OR,
-    ];
-    //Chequeamos si está en el array
-    if (!valid_conn.includes(filter.conn)) {
-      throw new DevsStudioNodejsqlError(
-        `Invalid filter connector: ${filter.conn}`
-      );
-    }
-  };
-
   verifyFilterAttribute(filter: FilterRequest) {
-    //Verificamos que exista
-    if (filter.attr) {
-      //Nothing
-    } else {
-      throw new DevsStudioNodejsqlError(
-        `Attribute filter is required when filter type is ${filter.type}`
-      );
-    }
-
     //Verificamos tipo
-    if (filter.type === NativeList.FILTER_TYPE_TERM) {
-      //Verificamos que sea un array
-      this._verifyFilterType(filter);
+    if (filter.type === NodeJSQLFilterType.TERM) {
       //Verificamos si es un valor válido
       for (let attr of filter.attr.split(",")) {
         var column = this.getColumn(attr);
@@ -482,31 +390,19 @@ export class NativeList {
   };
 
   verifyFilterOperator(filter: FilterRequest) {
-    var list = [
-      NativeList.FILTER_TYPE_SIMPLE,
-      NativeList.FILTER_TYPE_COLUMN,
-    ];
     //Si está en la lista se verifica, de lo contrario no hay problema porque será ignorado
     switch (filter.type) {
-      case NativeList.FILTER_TYPE_SIMPLE:
-      case NativeList.FILTER_TYPE_COLUMN:
-
-        //Si no está seteado asumimos equal
-        if (filter.opr) {
-          filter.opr = filter.opr.toUpperCase();
-        } else {
-          filter.opr = NativeList.FILTER_OPERATOR_EQUAL;
-        }
-
+      case NodeJSQLFilterType.SIMPLE:
+      case NodeJSQLFilterType.COLUMN:
         var valid_operators = [
-          NativeList.FILTER_OPERATOR_EQUAL,
-          NativeList.FILTER_OPERATOR_NOT_EQUAL,
-          NativeList.FILTER_OPERATOR_MAJOR,
-          NativeList.FILTER_OPERATOR_MAJOR_EQUAL,
-          NativeList.FILTER_OPERATOR_MINOR,
-          NativeList.FILTER_OPERATOR_MINOR_EQUAL,
-          NativeList.FILTER_OPERATOR_LIKE,
-          NativeList.FILTER_OPERATOR_ILIKE,
+          NodeJSQLFilterOperator.EQUAL,
+          NodeJSQLFilterOperator.NOT_EQUAL,
+          NodeJSQLFilterOperator.MAJOR,
+          NodeJSQLFilterOperator.MAJOR_EQUAL,
+          NodeJSQLFilterOperator.MINOR,
+          NodeJSQLFilterOperator.MINOR_EQUAL,
+          NodeJSQLFilterOperator.LIKE,
+          NodeJSQLFilterOperator.ILIKE,
         ];
         //Verificamos si es un valor válido
         if (!valid_operators.includes(filter.opr)) {
@@ -515,22 +411,14 @@ export class NativeList {
           );
         }
         break;
-      case NativeList.FILTER_TYPE_NUMERIC:
-
-        //Si no está seteado asumimos equal
-        if (filter.opr) {
-          filter.opr = filter.opr.toUpperCase();
-        } else {
-          filter.opr = NativeList.FILTER_OPERATOR_EQUAL;
-        }
-
+      case NodeJSQLFilterType.NUMERIC:
         var valid_operators = [
-          NativeList.FILTER_OPERATOR_EQUAL,
-          NativeList.FILTER_OPERATOR_NOT_EQUAL,
-          NativeList.FILTER_OPERATOR_MAJOR,
-          NativeList.FILTER_OPERATOR_MAJOR_EQUAL,
-          NativeList.FILTER_OPERATOR_MINOR,
-          NativeList.FILTER_OPERATOR_MINOR_EQUAL,
+          NodeJSQLFilterOperator.EQUAL,
+          NodeJSQLFilterOperator.NOT_EQUAL,
+          NodeJSQLFilterOperator.MAJOR,
+          NodeJSQLFilterOperator.MAJOR_EQUAL,
+          NodeJSQLFilterOperator.MINOR,
+          NodeJSQLFilterOperator.MINOR_EQUAL,
         ];
         //Verificamos si es un valor válido
         if (!valid_operators.includes(filter.opr)) {
@@ -539,17 +427,10 @@ export class NativeList {
           );
         }
         break;
-      case NativeList.FILTER_TYPE_TERM:
-        //Si no está seteado asumimos LIKE
-        if (filter.opr) {
-          filter.opr = filter.opr.toUpperCase();
-        } else {
-          filter.opr = NativeList.FILTER_OPERATOR_LIKE;
-        }
-
+      case NodeJSQLFilterType.TERM:
         var valid_operators = [
-          NativeList.FILTER_OPERATOR_LIKE,
-          NativeList.FILTER_OPERATOR_ILIKE,
+          NodeJSQLFilterOperator.LIKE,
+          NodeJSQLFilterOperator.ILIKE,
         ];
         //Verificamos si es un valor válido
         if (!valid_operators.includes(filter.opr)) {
@@ -561,57 +442,41 @@ export class NativeList {
     }
   };
 
-  verifyFilterValue(filter: FilterRequest) {
-    var blacklist = [
-      NativeList.FILTER_TYPE_NULL,
-      NativeList.FILTER_TYPE_NOT_NULL,
-    ];
-
-    if (!blacklist.includes(filter.type)) {
-      //Verificamos que exista (salvo que sea NULL o NOT_NULL)
-      if (typeof filter.val === "undefined") {
-        throw new DevsStudioNodejsqlError(
-          `Value is required when filter type is ${filter.type}`
-        );
-      }
-    }
-  };
-
   _processFilter(filter: FilterRequest, condition: string, placeholders: string[]) {
     switch (filter.type) {
-      case NativeList.FILTER_TYPE_SIMPLE:
+      case NodeJSQLFilterType.SIMPLE:
         return this._processSimpleFilter(filter, condition, placeholders);
-      case NativeList.FILTER_TYPE_COLUMN:
+      case NodeJSQLFilterType.COLUMN:
         return this._processColumnFilter(filter, condition, placeholders);
-      case NativeList.FILTER_TYPE_BETWEEN:
+      case NodeJSQLFilterType.BETWEEN:
         return this._processBetweenFilter(
           filter,
           false,
           condition,
           placeholders
         );
-      case NativeList.FILTER_TYPE_NOT_BETWEEN:
+      case NodeJSQLFilterType.NOT_BETWEEN:
         return this._processBetweenFilter(
           filter,
           true,
           condition,
           placeholders
         );
-      case NativeList.FILTER_TYPE_IN:
+      case NodeJSQLFilterType.IN:
         return this._processInFilter(filter, false, condition, placeholders);
-      case NativeList.FILTER_TYPE_NOT_IN:
+      case NodeJSQLFilterType.NOT_IN:
         return this._processInFilter(filter, true, condition, placeholders);
-      case NativeList.FILTER_TYPE_NULL:
+      case NodeJSQLFilterType.NULL:
         return this._processNullFilter(filter, false, condition, placeholders);
-      case NativeList.FILTER_TYPE_NOT_NULL:
+      case NodeJSQLFilterType.NOT_NULL:
         return this._processNullFilter(filter, true, condition, placeholders);
-      case NativeList.FILTER_TYPE_TERM:
+      case NodeJSQLFilterType.TERM:
         return this._processTermFilter(filter, condition, placeholders);
-      case NativeList.FILTER_TYPE_DATE:
+      case NodeJSQLFilterType.DATE:
         return this._processDateFilter(filter, condition, placeholders);
-      case NativeList.FILTER_TYPE_NUMERIC:
+      case NodeJSQLFilterType.NUMERIC:
         return this._processNumericFilter(filter, condition, placeholders);
-      case NativeList.FILTER_TYPE_DATE_BETWEEN:
+      case NodeJSQLFilterType.DATE_BETWEEN:
         return this._processDateBetweenFilter(filter, condition, placeholders);
     }
   };
@@ -629,7 +494,7 @@ export class NativeList {
       " " +
       filter.opr +
       " " +
-      this._setPlaceholder(placeholders, filter.val) +
+      this._setPlaceholder(placeholders, filter.val!) +
       ")"
     );
   };
@@ -648,7 +513,7 @@ export class NativeList {
       " " +
       filter.opr +
       " " +
-      this._setPlaceholder(placeholders, (is_number ? filter.val : '0')) +
+      this._setPlaceholder(placeholders, (is_number ? filter.val! : '0')) +
       ")"
     );
   };
@@ -657,7 +522,7 @@ export class NativeList {
 
     //Verificamos que sea una columna válida
     var column = this.getColumn(filter.attr);
-    var column2 = this.getColumn(filter.val);
+    var column2 = this.getColumn(filter.val!);
     if (typeof column2 === "undefined" || column2 === null) {
       throw new DevsStudioNodejsqlError(
         `Column filter '${filter.val}' is not allowed`
@@ -680,7 +545,7 @@ export class NativeList {
   private _processBetweenFilter(filter: FilterRequest, not: boolean, condition: string, placeholders: string[]) {
 
     //Hacemos split de los campos
-    var vals = filter.val.split(",");
+    var vals = filter.val!.split(",");
 
     //Debe tener dos valores siempre
     if (vals.length !== 2) {
@@ -720,7 +585,7 @@ export class NativeList {
 
   _processInFilter(filter: FilterRequest, not: boolean, condition: string, placeholders: string[]) {
 
-    var vals = filter.val.split(",");
+    var vals = filter.val!.split(",");
 
     var current_placeholders = [];
     //Cada elemento no debe ser array
@@ -785,7 +650,7 @@ export class NativeList {
 
       var column = this.getColumn(attrs[j]);
       ors.push(
-        column + " " + filter.opr + " " + this._setPlaceholder(placeholders, filter.val)
+        column + " " + filter.opr + " " + this._setPlaceholder(placeholders, filter.val!)
       );
     }
 
@@ -803,7 +668,7 @@ export class NativeList {
     //Creamos
     var column = this.getColumn(filter.attr);
 
-    switch (this.con.connection.driver.constructor.name) {
+    switch (this.connection.connection.driver.constructor.name) {
       case 'MysqlDriver':
         return (
           " " +
@@ -811,9 +676,9 @@ export class NativeList {
           " (" +
           column +
           " BETWEEN " +
-          this._setPlaceholder(placeholders, filter.val) +
+          this._setPlaceholder(placeholders, filter.val!) +
           " AND DATE_ADD(" +
-          this._setPlaceholder(placeholders, filter.val) +
+          this._setPlaceholder(placeholders, filter.val!) +
           ", INTERVAL 1 DAY))"
         );
       case 'PostgresDriver':
@@ -824,9 +689,9 @@ export class NativeList {
           " (" +
           column +
           " BETWEEN (" +
-          this._setPlaceholder(placeholders, filter.val) +
+          this._setPlaceholder(placeholders, filter.val!) +
           ")::TIMESTAMP AND (" +
-          this._setPlaceholder(placeholders, filter.val) +
+          this._setPlaceholder(placeholders, filter.val!) +
           ")::TIMESTAMP + interval '1 days')"
         );
     }
@@ -834,7 +699,7 @@ export class NativeList {
 
   _processDateBetweenFilter(filter: FilterRequest, condition: string, placeholders: string[]) {
 
-    var vals = filter.val.split(",");
+    var vals = filter.val!.split(",");
 
     if (vals.length !== 2) {
       throw new DevsStudioNodejsqlError(
@@ -845,7 +710,7 @@ export class NativeList {
     //Creamos
     var column = this.getColumn(filter.attr);
 
-    switch (this.con.connection.driver.constructor.name) {
+    switch (this.connection.connection.driver.constructor.name) {
       case 'MysqlDriver':
         return (
           " " +
