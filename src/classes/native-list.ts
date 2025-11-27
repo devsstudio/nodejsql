@@ -1,4 +1,4 @@
-import { isNumber, isNumberString, validate } from "class-validator";
+import { isArray, isNumber, isNumberString, isString, validate } from "class-validator";
 import { ListParams } from "../dto/params/list.params";
 import { FilterRequest } from "../dto/request/filter.request";
 import { FindRequest } from "../dto/request/find.request";
@@ -237,7 +237,7 @@ export class NativeList {
     return items[0].count * 1;
   };
 
-  private _setPlaceholder(placeholders: string[], value: string) {
+  private _setPlaceholder(placeholders: NodeJSQLFilterValueSimple[], value: NodeJSQLFilterValueSimple) {
     placeholders.push(value);
 
     switch (this.connection.connection.driver.constructor.name) {
@@ -405,7 +405,7 @@ export class NativeList {
           NodeJSQLFilterOperator.ILIKE,
         ];
         //Verificamos si es un valor válido
-        if (!valid_operators.includes(filter.opr)) {
+        if (!valid_operators.includes(filter.opr!!)) {
           throw new DevsStudioNodejsqlError(
             `Operator filter '${filter.opr}' not allowed`
           );
@@ -421,7 +421,7 @@ export class NativeList {
           NodeJSQLFilterOperator.MINOR_EQUAL,
         ];
         //Verificamos si es un valor válido
-        if (!valid_operators.includes(filter.opr)) {
+        if (!valid_operators.includes(filter.opr!!)) {
           throw new DevsStudioNodejsqlError(
             `Operator filter '${filter.opr}' not allowed`
           );
@@ -433,7 +433,7 @@ export class NativeList {
           NodeJSQLFilterOperator.ILIKE,
         ];
         //Verificamos si es un valor válido
-        if (!valid_operators.includes(filter.opr)) {
+        if (!valid_operators.includes(filter.opr!!)) {
           throw new DevsStudioNodejsqlError(
             `Operator filter '${filter.opr}' not allowed in term condition`
           );
@@ -483,23 +483,35 @@ export class NativeList {
 
   private _processSimpleFilter(filter: FilterRequest, condition: string, placeholders: string[]) {
 
+    if (isArray(filter.val)) {
+      throw new DevsStudioNodejsqlError(
+        `Filter value should not be an array, when filter type is ${filter.type}`
+      );
+    }
+
     //Creamos
     var column = this.getColumn(filter.attr);
 
     return (
       " " +
-      this._getConn(filter.conn, condition) +
+      this._getConn(filter.conn!!, condition) +
       " (" +
       column +
       " " +
       filter.opr +
       " " +
-      this._setPlaceholder(placeholders, filter.val!) +
+      this._setPlaceholder(placeholders, filter.val as NodeJSQLFilterValueSimple) +
       ")"
     );
   };
 
   private _processNumericFilter(filter: FilterRequest, condition: string, placeholders: string[]) {
+
+    if (isArray(filter.val)) {
+      throw new DevsStudioNodejsqlError(
+        `Filter value should not be an array, when filter type is ${filter.type}`
+      );
+    }
 
     //Creamos
     var column = this.getColumn(filter.attr);
@@ -507,22 +519,28 @@ export class NativeList {
 
     return (
       " " +
-      this._getConn(filter.conn, condition) +
+      this._getConn(filter.conn!!, condition) +
       " (" +
       column +
       " " +
       filter.opr +
       " " +
-      this._setPlaceholder(placeholders, (is_number ? filter.val! : '0')) +
+      this._setPlaceholder(placeholders, (is_number ? filter.val as NodeJSQLFilterValueSimple : 0)) +
       ")"
     );
   };
 
   private _processColumnFilter(filter: FilterRequest, condition: string, placeholders: string[]) {
 
+    if (!isString(filter.val)) {
+      throw new DevsStudioNodejsqlError(
+        `Filter value should be a string, when filter type is ${filter.type}`
+      );
+    }
+
     //Verificamos que sea una columna válida
     var column = this.getColumn(filter.attr);
-    var column2 = this.getColumn(filter.val!);
+    var column2 = this.getColumn(filter.val.toString());
     if (typeof column2 === "undefined" || column2 === null) {
       throw new DevsStudioNodejsqlError(
         `Column filter '${filter.val}' is not allowed`
@@ -531,7 +549,7 @@ export class NativeList {
 
     return (
       " " +
-      this._getConn(filter.conn, condition) +
+      this._getConn(filter.conn!!, condition) +
       " (" +
       column +
       " " +
@@ -544,8 +562,13 @@ export class NativeList {
 
   private _processBetweenFilter(filter: FilterRequest, not: boolean, condition: string, placeholders: string[]) {
 
-    //Hacemos split de los campos
-    var vals = filter.val!.split(",");
+    if (!isArray(filter.val)) {
+      throw new DevsStudioNodejsqlError(
+        `Filter value should be an array, when filter type is ${filter.type}`
+      );
+    }
+
+    var vals = filter.val as NodeJSQLFilterValueSimple[];
 
     //Debe tener dos valores siempre
     if (vals.length !== 2) {
@@ -559,7 +582,7 @@ export class NativeList {
     if (not) {
       return (
         " " +
-        this._getConn(filter.conn, condition) +
+        this._getConn(filter.conn!!, condition) +
         " (" +
         column +
         " NOT BETWEEN " +
@@ -571,7 +594,7 @@ export class NativeList {
     } else {
       return (
         " " +
-        this._getConn(filter.conn, condition) +
+        this._getConn(filter.conn!!, condition) +
         " (" +
         column +
         " BETWEEN " +
@@ -585,7 +608,13 @@ export class NativeList {
 
   _processInFilter(filter: FilterRequest, not: boolean, condition: string, placeholders: string[]) {
 
-    var vals = filter.val!.split(",");
+    if (!isArray(filter.val)) {
+      throw new DevsStudioNodejsqlError(
+        `Filter value should be an array, when filter type is ${filter.type}`
+      );
+    }
+
+    var vals = filter.val as NodeJSQLFilterValueSimple[];
 
     var current_placeholders = [];
     //Cada elemento no debe ser array
@@ -600,7 +629,7 @@ export class NativeList {
     if (not) {
       return (
         " " +
-        this._getConn(filter.conn, condition) +
+        this._getConn(filter.conn!!, condition) +
         " (" +
         column +
         " NOT IN (" +
@@ -610,7 +639,7 @@ export class NativeList {
     } else {
       return (
         " " +
-        this._getConn(filter.conn, condition) +
+        this._getConn(filter.conn!!, condition) +
         " (" +
         column +
         " IN (" +
@@ -626,7 +655,7 @@ export class NativeList {
     if (not) {
       return (
         " " +
-        this._getConn(filter.conn, condition) +
+        this._getConn(filter.conn!!, condition) +
         " (" +
         column +
         " IS NOT NULL)"
@@ -634,7 +663,7 @@ export class NativeList {
     } else {
       return (
         " " +
-        this._getConn(filter.conn, condition) +
+        this._getConn(filter.conn!!, condition) +
         " (" +
         column +
         " IS NULL)"
@@ -643,6 +672,13 @@ export class NativeList {
   };
 
   _processTermFilter(filter: FilterRequest, condition: string, placeholders: string[]) {
+
+    if (!isString(filter.val)) {
+      throw new DevsStudioNodejsqlError(
+        `Filter value should be a string, when filter type is ${filter.type}`
+      );
+    }
+
     var attrs = filter.attr.split(",");
     //Recorremos las columnas para filtros OR
     var ors = [];
@@ -650,13 +686,13 @@ export class NativeList {
 
       var column = this.getColumn(attrs[j]);
       ors.push(
-        column + " " + filter.opr + " " + this._setPlaceholder(placeholders, filter.val!)
+        column + " " + filter.opr + " " + this._setPlaceholder(placeholders, filter.val.toString())
       );
     }
 
     return (
       " " +
-      this._getConn(filter.conn, condition) +
+      this._getConn(filter.conn!!, condition) +
       " (" +
       ors.join(" OR ") +
       ")"
@@ -665,6 +701,12 @@ export class NativeList {
 
   _processDateFilter(filter: FilterRequest, condition: string, placeholders: string[]) {
 
+    if (!isString(filter.val)) {
+      throw new DevsStudioNodejsqlError(
+        `Filter value should be a string, when filter type is ${filter.type}`
+      );
+    }
+
     //Creamos
     var column = this.getColumn(filter.attr);
 
@@ -672,26 +714,26 @@ export class NativeList {
       case 'MysqlDriver':
         return (
           " " +
-          this._getConn(filter.conn, condition) +
+          this._getConn(filter.conn!!, condition) +
           " (" +
           column +
           " BETWEEN " +
-          this._setPlaceholder(placeholders, filter.val!) +
+          this._setPlaceholder(placeholders, filter.val.toString()) +
           " AND DATE_ADD(" +
-          this._setPlaceholder(placeholders, filter.val!) +
+          this._setPlaceholder(placeholders, filter.val.toString()) +
           ", INTERVAL 1 DAY))"
         );
       case 'PostgresDriver':
       default:
         return (
           " " +
-          this._getConn(filter.conn, condition) +
+          this._getConn(filter.conn!!, condition) +
           " (" +
           column +
           " BETWEEN (" +
-          this._setPlaceholder(placeholders, filter.val!) +
+          this._setPlaceholder(placeholders, filter.val.toString()) +
           ")::TIMESTAMP AND (" +
-          this._setPlaceholder(placeholders, filter.val!) +
+          this._setPlaceholder(placeholders, filter.val.toString()) +
           ")::TIMESTAMP + interval '1 days')"
         );
     }
@@ -699,7 +741,13 @@ export class NativeList {
 
   _processDateBetweenFilter(filter: FilterRequest, condition: string, placeholders: string[]) {
 
-    var vals = filter.val!.split(",");
+    if (!isArray(filter.val)) {
+      throw new DevsStudioNodejsqlError(
+        `Filter value should be an array, when filter type is ${filter.type}`
+      );
+    }
+
+    var vals = filter.val as NodeJSQLFilterValueSimple[];
 
     if (vals.length !== 2) {
       throw new DevsStudioNodejsqlError(
@@ -714,26 +762,26 @@ export class NativeList {
       case 'MysqlDriver':
         return (
           " " +
-          this._getConn(filter.conn, condition) +
+          this._getConn(filter.conn!!, condition) +
           " (" +
           column +
           " BETWEEN " +
-          this._setPlaceholder(placeholders, vals[0]) +
+          this._setPlaceholder(placeholders, vals[0].toString()) +
           " AND DATE_ADD(" +
-          this._setPlaceholder(placeholders, vals[1]) +
+          this._setPlaceholder(placeholders, vals[1].toString()) +
           ", INTERVAL 1 DAY))"
         );
       case 'PostgresDriver':
       default:
         return (
           " " +
-          this._getConn(filter.conn, condition) +
+          this._getConn(filter.conn!!, condition) +
           " (" +
           column +
           " BETWEEN (" +
-          this._setPlaceholder(placeholders, vals[0]) +
+          this._setPlaceholder(placeholders, vals[0].toString()) +
           ")::TIMESTAMP AND (" +
-          this._setPlaceholder(placeholders, vals[1]) +
+          this._setPlaceholder(placeholders, vals[1].toString()) +
           ")::TIMESTAMP + interval '1 days')"
         );
     }
