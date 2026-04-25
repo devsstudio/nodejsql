@@ -3,8 +3,10 @@ import { ListParams } from "../dto/params/list.params";
 import { FilterRequest } from "../dto/request/filter.request";
 import { FindRequest } from "../dto/request/find.request";
 import { InfiniteScrollRequest } from "../dto/request/infinite-scroll.request";
+import { PaginationFromRequest } from "../dto/request/pagination-from.request";
 import { PaginationOffsetRequest } from "../dto/request/pagination-offset.request";
 import { PaginationRequest } from "../dto/request/pagination.request";
+import { ListFromResponse } from "../dto/response/list-from.response";
 import { ListOffsetResponse } from "../dto/response/list-offset.response";
 import { ListResponse } from "../dto/response/list.response";
 import { Select2Response } from "../dto/response/select2.response";
@@ -12,6 +14,7 @@ import { Columns, Order, Row } from "../interfaces/interfaces";
 import { DevsStudioNodejsqlError } from "./error";
 import { NodeJSQLFilterConnector, NodeJSQLFilterOperator, NodeJSQLFilterType } from "../dto/enums/enums";
 import { plainToInstance } from "class-transformer";
+import { EncodeHelper } from "../helpers/encode.helper";
 
 
 export class NativeList {
@@ -150,6 +153,40 @@ export class NativeList {
       total_items: total_items,
       filtered_items: filtered_items,
       items: items,
+    };
+  }
+
+  async findPaginatedFrom(filters: FilterRequest[], pagination: PaginationFromRequest, exclusions?: string[]): Promise<ListFromResponse> {
+
+    const limit = (pagination.limit ?? 10) * 1;
+    const offset = EncodeHelper.decodeFrom(pagination.from);
+
+    var placeholders: string[] = [];
+    this.where = await this._setFilters(filters, this.original_where, placeholders);
+    this.offsetLimit = await this._setPaginationOffset({
+      offset: offset,
+      limit: limit,
+      order: pagination.order || {}
+    } as PaginationOffsetRequest);
+    this.order = this._setOrder(pagination.order);
+
+    var selectPairs = this.getSelectPairs(exclusions ?? []);
+    var sql = this.getSql(selectPairs);
+    var rows = await this.connection.query(sql, placeholders);
+
+    const hasNext = rows.length > limit;
+    const items = hasNext ? rows.slice(0, limit) : rows;
+
+    const prevOffset = offset > 0 ? Math.max(offset - limit, 0) : null;
+    const nextOffset = hasNext ? offset + limit : null;
+
+    const count = pagination.count ? await this._count(placeholders) : null;
+
+    return {
+      items: items,
+      prev: prevOffset === null ? null : EncodeHelper.encodeFrom(prevOffset),
+      next: nextOffset === null ? null : EncodeHelper.encodeFrom(nextOffset),
+      count: count,
     };
   }
 
