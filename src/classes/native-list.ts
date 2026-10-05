@@ -15,6 +15,7 @@ import { DevsStudioNodejsqlError } from "./error";
 import { NodeJSQLFilterConnector, NodeJSQLFilterOperator, NodeJSQLFilterType } from "../dto/enums/enums";
 import { plainToInstance } from "class-transformer";
 import { EncodeHelper } from "../helpers/encode.helper";
+import { NodeJSQLFilterValueSimple } from "../dto/types/types";
 
 
 export class NativeList {
